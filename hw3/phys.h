@@ -56,10 +56,36 @@ double amu[] {
     58.71       //Ni
 }
 
+/**
+ * PARTITION FUNCTIONS for NEUTRAL SPECIES at theta=1.0
+ * per Table D.2 (Gray, 3ed)
+ */
 double u0[] = {
-    1.0
+    0.301,      //H
+    0.964,      //C
+    0.320,      //Na
+    0.007,      //Mg
+    0.976,      //Si
+    0.351,      //K
+    0.073,      //Ca
+    1.022,      //Cr
+    1.446,      //Fe
+    1.490       //Ni
 };
 
+/**
+ * PARTITION FUNCTIONS for SINGLY-IONIZIED SPECIES at theta=1.0
+ * per Table D.2 (Gray, 3ed)
+ */
 double u1[] = {
-    2.0
+    0.000,      //H+
+    0.773,      //C+
+    0.000,      //Na+
+    0.301,      //Mg+
+    0.755,      //Si+
+    0.000,      //K+
+    0.344,      //Ca+
+    0.856,      //Cr+
+    1.638,      //Fe+
+    1.037       //Ni+
 };

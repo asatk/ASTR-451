@@ -16,6 +16,7 @@ double teff = 5777.;
 double mtl = 0;
 long nsteps = 1e3;
 char *f = "kurucz.txt";
+double sahaphicurr[sizeof(enum species)/sizeof(int)];
 
 int parse(int argc, char **argv);
 double tstar(double tau0);
@@ -86,7 +87,7 @@ double pe(double pg, double pei, double temp) {
     double pef, numer = 0.0, denom = 0.0, factor;
 
     for(j = 0; j < sizeof(enum species)/sizeof(int); j++) {
-        factor = 1. / (pei/sahaphi(temp, j) + 1.);
+        factor = 1. / (pei/sahaphicurr[j] + 1.);
         numer += A[j] * factor;
         denom += A[j] * (1. + factor);
     }
@@ -98,9 +99,19 @@ double computemodel(double mcol, double temp) {
     double precision = 0.01;
     double pgi = mcol * pow(10., logg);
     double tau0 = tau(temp);
-    double pgf;
+    
+    double pgf = pgi;
     int i = 0;
+    /* Iteratively calculate Pg until its value converges to within 1% of the
+       previous iteration's value */
     do {
+        // Set current Pg guess to the previous estimate
+        pgi = pgf;
+
+        // Calculate Pe from Pg guess, Pe guess, and T
+
+        // Calculate Pg from guess at Pg with kappa(Pe, T)
+
         printf("iteration %i\n\tpgi: %lf\n",i,pgi);
         pgf = pg(pgi, tau0);
         printf("pgf: %lf",pgf);

@@ -13,109 +13,119 @@ extern char *optarg;
 
 double logg = 4.44;
 double teff = 5777.;
-double mtl = 0;
-long nsteps = 1e3;
+double mtl = 0.;
+long niters = 5;
 char *f = "kurucz.txt";
-double sahaphicurr[sizeof(enum species)/sizeof(int)];
+double sahaphicurr[NSPECIES];
 
 int parse(int argc, char **argv);
-double tstar(double tau0);
-double pg(double pgi, double pei, double tau0);
-double sahaphi(double temp, int species);
-double pe(double pg, double pei, double temp);
-double kappa(double pe, double temp);
+double pg(double mcol);
+void sahaphi(double temp);
+double peguess(double pg);
+double pe(double pg, double pei);
 double computemodel(double mcol, double temp);
+void init_pfn(void);
 
-//sum of all absorption methods
-double kappa(double pe, double temp) {
-    double kappa0;
-    
-    return kappa0;
+// MUST DO METALLICITY ADJUSTMENTS TO ABUNDANCES
+
+
+// gas pressure determined from input parameters
+double pg(double mcol) {
+    return pow(10., logg) * mcol;
 }
 
-// temperature of star determined by grey atmosphere/solar model
-double tstar(double tau0) {
-    return teff * pow(3./4. * (tau0 + 2./3.), 1./4.);
+// guess of initial electron pressure assuming Hydrogen-only atmosphere
+double peguess(double pg) {
+    return -1. * sahaphicurr[0] + sqrt(pow(sahaphicurr[0],2.) + sahaphicurr[0] * pg);
 }
 
-// return optical depth from temperature based on grey atm model
-double tau(double temp) {
-    return pow(temp / teff, 4.) * 4./3. - 2./3.;
-}
-
-// gas pressure determined iteratively assuming hydrostatic equilibrium
-double pg(double pgi, double pei, double tau0) {
-    int i;
-    double pgf, pintg, val, t0, dlogt0, pe0, temp0, kappa0;
-
-    temp0 = tstar(tau0);
-    pe0 = pe(pgi, pei, temp0);
-    kappa0 = kappa(pe0, temp0);
-
-    // double precision = 1e-7; //fraction precision to which the integral must converge
-    pintg = 0.0;
-    dlogt0 = (DBL_MAX - tau0)/nsteps;
-
-    for(i = 0; i < nsteps; i++) {
-        val = (pow(t0, 1./2.) * pow(pgi, 1./2.) / (kappa0 * M_LOG10E)) * dlogt0;
-        t0 += pow(10., dlogt0);
-        pintg += val;
+void init_pfn(void) {
+    int j;
+    for(j = 0; j < NSPECIES; j++) {
+        u0[j] = pow(10.,u0[j]);
+        u1[j] = pow(10.,u1[j]);
+        // printf("species %i: u0=%le\tu1=%le\n",j,u0[j],u1[j]);
     }
-
-    printf("pintg: %lf\n", pintg);
-
-    pgf = pow(3./2. * pow(10., logg) * pintg, 2./3.);
-
-    return pgf;
 }
 
 /**
- * Returns the electron pressure-independent factor of the Saha equation
- * corresponding to a given temperature and ion species. Uses cgs units.
+ * 
  */
-double sahaphi(double temp, int species) {
-    return 0.6665 * u1[species]/u0[species] * pow(temp, 5./2) * pow(10., -5040.*I[species]/temp);
+void sahaphi(double temp) {
+    
+    // double v0, v1, v2;
+    int j;
+    for(j = 0; j < NSPECIES; j++) {
+        // v0 = 0.6665 * u1[j]/u0[j];
+        // v1 = pow(temp, 5./2.);
+        // v2 = pow(10., -5040.*I[j]/temp);
+        // printf("v0=%le\tv1=%le\tv2=%le\tprod=%le\n",v0,v1,v2,v0*v1*v2); 
+        sahaphicurr[j] = 0.6665 * u1[j]/u0[j] * pow(temp, 5./2.) *
+            pow(10., -5040.*I[j]/temp);
+        // printf("species %i: sahaphi=%le\n",j,sahaphicurr[j]);
+    }
 }
 
 /**
- * Calculates Pe (electron pressure) given a gas pressure, an initial guess at
- * electron pressure, and temperature. The final solved electron pressure is
- * given in cgs units.
+ * Calculates Pe (electron pressure) given a gas pressure and a guess at the
+ * electron pressure. The final solved electron pressure is given in cgs units.
+ * 
+ * pre-req - saha phi run so that temp isnt important
  */
-double pe(double pg, double pei, double temp) {
-    unsigned int j;
-    double pef, numer = 0.0, denom = 0.0, factor;
+double pe(double pg, double pei) {
+    int j;
+    double numer = 0.0, denom = 0.0, factor;
 
-    for(j = 0; j < sizeof(enum species)/sizeof(int); j++) {
-        factor = 1. / (pei/sahaphicurr[j] + 1.);
+    for(j = 0; j < NSPECIES; j++) {
+        // printf("species %i: sahaphi=%le\n",j,sahaphicurr[j]);
+        factor = 1. / (pei / sahaphicurr[j] + 1.);
         numer += A[j] * factor;
         denom += A[j] * (1. + factor);
     }
-    pef = numer/denom;
-    return pef;
+
+    return pg * numer / denom;
 }
 
 double computemodel(double mcol, double temp) {
-    double precision = 0.01;
-    double pgi = mcol * pow(10., logg);
-    double tau0 = tau(temp);
+    // double precision = 0.01;
     
-    double pgf = pgi;
-    int i = 0;
+    sahaphi(temp);
+
+    int m;
+    for(m = 0; m < NSPECIES; m++) {
+        // printf("species %i: sahaphi=%le\n",m,sahaphicurr[m]);
+    }
+    
+    double pgi = pg(mcol);
+
+    printf("mcol %le: pg=%le\n",mcol,pgi);
+
+    double pei = peguess(pgi);
+
+    printf("electron pressure (Pe) initl: %le\n",pei);
+    
+    int i;
     /* Iteratively calculate Pg until its value converges to within 1% of the
        previous iteration's value */
-    do {
-        // Set current Pg guess to the previous estimate
-        pgi = pgf;
+    for(i = 0; i < niters; i++) {
+        // printf("electron pressure (Pe) guess: %le\n",pei);
+        pei = pe(pgi, pei);
+    }
+    printf("electron pressure (Pe) final: %le\n",pei);
+    // do {
+    //     // Set current Pg guess to the previous estimate
+    //     pgi = pgf;
 
-        // Calculate Pe from Pg guess, Pe guess, and T
+    //     // Calculate Pe from Pg guess, Pe guess, and T
 
-        // Calculate Pg from guess at Pg with kappa(Pe, T)
+    //     // Calculate Pg from guess at Pg with kappa(Pe, T)
 
-        printf("iteration %i\n\tpgi: %lf\n",i,pgi);
-        pgf = pg(pgi, tau0);
-        printf("pgf: %lf",pgf);
-    } while((pgi - pgf)/pgf > precision);
+    //     printf("iteration %i\n\tpgi: %lf\n",i,pgi);
+    //     pgf = pg(pgi, tau0);
+    //     printf("pgf: %lf",pgf);
+    // } while((pgi - pgf)/pgf > precision);
+
+    return pei;
 }
 
 /**
@@ -130,7 +140,7 @@ int parse(int argc, char **argv) {
     int c;
 
     // Parse each character in the command-line argument string
-    while((c = getopt(argc, argv, ":g:n:m:t:")) != -1) {
+    while((c = getopt(argc, argv, ":f:g:hn:m:t:")) != -1) {
         switch (c) {
             case 'f':
                 // Parse filename (f) argument
@@ -142,17 +152,27 @@ int parse(int argc, char **argv) {
                     logg = val;
                 printf("logg: %lf\n",logg);
                 break;
-            case 'n':
-                // Parse number of iterations (nsteps) argument
-                if ((val = parsenum(optarg)) != 0.0)
-                    nsteps = (long) val;
-                printf("nsteps: %ld\n",nsteps);
-                break;
+            case 'h':
+                // Print help menu
+                printf("The following options and their default values are listed below:\n\
+                    -f\tfilename=\"kurucz.txt\"\n\
+                    -g\tlog gravity=4.44\n\
+                    -h\thelp menu\n\
+                    -m\tmetallicity=0.\n\
+                    -n\tnumber of iterations=1e3\n\
+                    -t\teffective temperature=5777.\n");
+                return 1;
             case 'm':
                 // Parse metallicity (mtl) argument
                 if ((val = parsenum(optarg)) != 0)
                     mtl = val;
                 printf("mtl: %lf\n",mtl);
+                break;
+            case 'n':
+                // Parse number of iterations (niters) argument
+                if ((val = parsenum(optarg)) != 0.0)
+                    niters = (long) val;
+                printf("niters: %ld\n",niters);
                 break;
             case 't':
                 // Parse temperature (teff) argument
@@ -160,8 +180,11 @@ int parse(int argc, char **argv) {
                     teff = val;
                 printf("teff: %lf\n",teff);
                 break;
-            default:
-                printf("hello from default\n");
+            case ':':
+                printf("option needs an argument\n");
+                break;
+            case '?':
+                printf("unknown option\n");
                 break;
         }
     }
@@ -178,22 +201,24 @@ int parse(int argc, char **argv) {
 int main(int argc, char **argv) {
 
     int err, nrows, i;
-    double *databuf;
+    double *databuf, val;
 
     // Parse the command-line arguments
     if ((err = parse(argc, argv)) != 0) {
-        printf("error parsing\n");
+        if (err != 1)
+            printf("error parsing\n");
         return err;
     }
 
     nrows = parsekurucz(f, &databuf);
+    (void)nrows;
 
-    //replace nrwos w 1
-    for(i = 0; i < 1; i++) {
+    init_pfn();
+
+    //replace nrows w 1
+    for(i = 0; i < nrows; i++) {
         printf("entry %i - %lf - %lf\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
-        computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
+        val = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
+        printf("compute model val: %lf\n",val);
     }
-
-    
-
 }

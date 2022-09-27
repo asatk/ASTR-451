@@ -1,3 +1,5 @@
+#define NSPECIES 10
+
 enum species {HYDROGEN, CARBON, SODIUM, MAGNESIUM, SILICON, POTASSIUM, CALCIUM,
     CHROMIUM, IRON, NICKEL};
 
@@ -43,7 +45,7 @@ double I[] = {
  * ATOMIC WEIGHTS (amu)
  * per Table D.1 (Gray, 3ed)
  */
-double amu[] {
+double amu[] = {
     1.008,      //H
     12.011,     //C
     22.990,     //Na
@@ -54,7 +56,7 @@ double amu[] {
     51.996,     //Cr
     55.847,     //Fe
     58.71       //Ni
-}
+};
 
 /**
  * PARTITION FUNCTIONS for NEUTRAL SPECIES at theta=1.0

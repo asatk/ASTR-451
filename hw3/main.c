@@ -141,8 +141,14 @@ int parse(int argc, char **argv) {
     return 0;
 }
 
-// make approx btwn each theta. at large t (small theta) extend linearly.
-// at small t (large theta) use last value (u[j][9])
+/**
+ * Approximate the partition function by linearly interpolating between y=log u
+ * and x=theta values. At large theta, want asymptotic behavior thus for any
+ * theta greater than 2.0, its pfn value is that at 2.0. At small theta, want
+ * increasing behavior as temperature grows, thus its pfn value is scaled
+ * linearly with previous interpolation. Stores interpolated parameters in the
+ * 4D array pfnlines where indices are [species][theta index][state][m=0,b=1].
+ */
 void init_pfn(void) {
     unsigned int j, t;
     double b0, m0, b1, m1;
@@ -188,7 +194,7 @@ void init_mtl(void) {
 }
 
 /**
- * Yields the value of the partition function interpolated linearly on a log
+ * Yields the value of the partition function interpolated linearly on a log u
  * scale. The returned value is the value of the partition function after
  * interpolation and exponentiation.
  */
@@ -233,7 +239,7 @@ void sahaphi(double temp) {
 /**
  * Calculates a guess for the electron pressure Pe at this level given the
  * photosphere is only comprised of Hydrogen. This serves ONLY as an initial
- * value for subsequent iterations of the value of Pe.
+ * value for subsequent iterations of the value of Pe. Returns the guess.
  */
 double peguess(double pg) {
     return -1. * sahaphicurr[0] + sqrt(pow(sahaphicurr[0],2.) + sahaphicurr[0] * pg);
@@ -241,9 +247,9 @@ double peguess(double pg) {
 
 /**
  * Calculates Pe (electron pressure) given a gas pressure and a guess at the
- * electron pressure. The final solved electron pressure is given in cgs units.
- * 
- * pre-req - saha phi run so that temp isnt important
+ * electron pressure. The final returned electron pressure is given in cgs
+ * units.
+ * Pre-condition: sahaphi was run at the given temperature level.
  */
 double pe(double pg, double pei) {
     int j;
@@ -263,7 +269,7 @@ double pe(double pg, double pei) {
 /**
  * Calculates the gas pressures Pg given the log-gravity and the mass column.
  * The calculation assumes a Kurucz atmosphere, where mass column is already
- * determined - no integration or iteration.
+ * determined - no integration or iteration. Returns the calculated pg.
  */
 double pg(double mcol) {
     return pow(10., logg) * mcol;
@@ -272,6 +278,10 @@ double pg(double mcol) {
 /**
  * Calculates the population densities of all neutral and ion species
  * considered in the model IN ADDITION TO H- ion and e-.
+ * 
+ * Returns the number densities for all desired species as a pointer to a
+ * memory location with 2 * NSPECIES + 2 double elements. Each element contains
+ * a corresponding number density: e-, H-, H I, H II, C I, C II, ...Ni I, Ni II
  */
 double *popdensities(double pgf, double pef, double temp) {
     int j;
@@ -323,6 +333,10 @@ double *popdensities(double pgf, double pef, double temp) {
  * Solves the atmosphere for a given level, determined by its mass column and
  * temperature. The gas pressure, electron pressure, and population densities
  * are calculated.
+ * 
+ * Returns the number densities for all desired species as a pointer to a
+ * memory location with 2 * NSPECIES + 2 double elements. Each element contains
+ * a corresponding number density: e-, H-, H I, H II, C I, C II, ...Ni I, Ni II
  */
 double *computemodel(double mcol, double temp) {
     double pgi, pei, pef, precision = 1.e-7, *pops;
@@ -359,10 +373,14 @@ double *computemodel(double mcol, double temp) {
     return pops;
 }
 
+/**
+ * Plot the number densities from the output file pops.dat using gnuplot.
+ */
 void plot(char *speciesnames[]) {
     int j;
     char str[250], fmt_str[250], title[10], titlej[10];
 
+    // modifications for logscale in y
     if (logscale) {
         strcpy(fmt_str, "gnuplot -e \"set logscale y 10; ");
         strcpy(title, "log ");
@@ -371,13 +389,18 @@ void plot(char *speciesnames[]) {
         strcpy(title, "");
     }
     
+    // gnuplot command template
     strcat(fmt_str,"set terminal png size 500,500; set output '%s.png'; set xlabel 'Photosphere Level'; set ylabel 'Number Density (%s per cm^{-3})'; plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"");
     
+    // plot each species
     for(j = 0; j < 2 * NSPECIES + 2; j++) {
         strcpy(titlej, title);
         strcat(titlej, speciesnames[j]);
-        printf("%s\n",titlej);
+        
+        // complete template command
         snprintf(str, 250, fmt_str, titlej, speciesnames[j], speciesnames[j], titlej);
+        
+        // run command
         system(str);
     }
 }
@@ -429,6 +452,8 @@ int main(int argc, char **argv) {
         pops = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
         if (verbose)
             printf("---- SPECIES POPULATIONS ----\nspecies\t\t#/cm^3\n");
+        
+        // print each species and its density to outfile and stdin if verbose
         for(j = 0; j < 2 * NSPECIES + 2; j++) {
             if (verbose)
                 printf("%s\t\t\t%.3le\n",speciesnames[j], *(pops + j));

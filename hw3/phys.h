@@ -7,6 +7,8 @@ double G = 6.67e-11;    // gravitational constant, J m kg-2
 double k = 1.38e-23;    // boltmann constant, J K-1
 double mu = 1.66e-27;   // atomic mass unit, kg
 double tsol = 5.777e3;  // effective temperature of the sun (Sol)
+double Ihminus = 0.755; // ionization energy of H- ion
+
 /**
  * ABUNDANCES (# atom/# hydrogen, in the Sun)
  * per Table 16.3 (Gray, 3ed)
@@ -57,6 +59,11 @@ double amu[] = {
     55.847,     //Fe
     58.71       //Ni
 };
+
+/**
+ * Theta values corresponding to the tabulated partition function argument
+ */
+double thetas[10] = {0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0};
 
 /**
  * PARTITION FUNCTIONS for NEUTRAL SPECIES

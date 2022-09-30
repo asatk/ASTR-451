@@ -28,6 +28,7 @@ double logg = 4.44;
 double teff = 5777.;
 double mtl[NSPECIES] = {0., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
 char verbose = 0;
+char logscale = 0;
 double pfnlines[NSPECIES][10][2][2]; // [species][theta index][state][m=0,b=1]
 double sahaphicurr[NSPECIES];
 double sahaphihminus;
@@ -57,7 +58,7 @@ int parse(int argc, char **argv) {
     int c;
 
     // Parse each character in the command-line argument string
-    while((c = getopt(argc, argv, ":f:g:hmt:v")) != -1) {
+    while((c = getopt(argc, argv, ":f:g:hmot:v")) != -1) {
         switch (c) {
             case 'f':
                 // Parse filename (f) argument
@@ -76,6 +77,7 @@ int parse(int argc, char **argv) {
                     -g\tlog gravity=4.44\n\
                     -h\thelp menu\n\
                     -m\tmetallicity={0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}\n\
+                    -o\tlogscale=FALSE\n\
                     -t\teffective temperature=5777.\n\
                     -v\tverbose=FALSE\n");
                 return 1;
@@ -115,6 +117,9 @@ int parse(int argc, char **argv) {
                     printf(", %e", mtl[i]);
                 }
                 printf("}\n");
+                break;
+            case 'o':
+                logscale = 1;
                 break;
             case 't':
                 // Parse temperature (teff) argument
@@ -354,6 +359,29 @@ double *computemodel(double mcol, double temp) {
     return pops;
 }
 
+void plot(char *speciesnames[]) {
+    int j;
+    char str[250], fmt_str[250], title[10], titlej[10];
+
+    if (logscale) {
+        strcpy(fmt_str, "gnuplot -e \"set logscale y 10; ");
+        strcpy(title, "log ");
+    } else {
+        strcpy(fmt_str, "gnuplot -e \"");
+        strcpy(title, "");
+    }
+    
+    strcat(fmt_str,"set terminal png size 500,500; set output '%s.png'; set xlabel 'Photosphere Level'; set ylabel 'Number Density (%s per cm^{-3})'; plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"");
+    
+    for(j = 0; j < 2 * NSPECIES + 2; j++) {
+        strcpy(titlej, title);
+        strcat(titlej, speciesnames[j]);
+        printf("%s\n",titlej);
+        snprintf(str, 250, fmt_str, titlej, speciesnames[j], speciesnames[j], titlej);
+        system(str);
+    }
+}
+
 /**
  * Entry point for the program. Computes spectrum for a star with parameters
  * specified in the command line for execution. Returns 0 upon successful exit.
@@ -365,7 +393,7 @@ int main(int argc, char **argv) {
 
     int err, nrows, i, j;
     double *databuf, *pops;
-    char *outfilename = "pops.dat", *str, *fmt_str, *cmd_str, *temp_name;
+    char *outfilename = "pops.dat", *temp_name;
     FILE *outfile;
 
     // Parse the command-line arguments
@@ -410,29 +438,8 @@ int main(int argc, char **argv) {
             fprintf(outfile, "%-*i\'%-*s%-*lf\n",8,i,10,temp_name,12,*(pops + j));
         }
     }
-    // gnuplot cmds (in gnuplot, from bash shell, in C script)
-    // set terminal png size 400,400; set output 'H I.png'; plot "<(cat pops.dat | grep \"H I\'\" | cat)" using 4 title "H I"
-    // gnuplot -p -e "set terminal png size 500,500; set output 'H I.png'; plot '<(cat pops.dat | grep \"H I''\" | cat)' using 4 title 'H I'"
-    // system("gnuplot -p -e \"plot '<(cat pops.dat | grep \\\"H I''\\\" | cat)' using 4 title 'H I'\"");
-
-    // cmd_str = "gnuplot -p -e \"plot '<(cat pops.dat | grep \\\"H I''\\\" | cat)' using 4 title 'H I'\"";
-    // system(cmd_str);
-
-    // str = (char *) malloc(100 * sizeof(char));
-    // fmt_str = "gnuplot -p -e \"plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"";
-    // snprintf(str, 100, fmt_str, speciesnames[2],speciesnames[2]);
-    // system(str);
-    
-    str = (char *) malloc(150 * sizeof(char));
-    fmt_str = "gnuplot -e \"set terminal png size 500,500; set output '%s.png'; plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"";
-    for(j = 0; j < 2 * NSPECIES + 2; j++) {
-        snprintf(str, 150, fmt_str, speciesnames[j], speciesnames[j],speciesnames[j]);
-        system(str);
-    }
-
-    (void)str;
-    (void)fmt_str;
-    (void)cmd_str;
 
     fclose(outfile);
+    
+    plot(speciesnames);
 }

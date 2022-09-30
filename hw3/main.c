@@ -132,11 +132,15 @@ void init_pfn(void) {
     unsigned int j, t;
     double b0, m0, b1, m1;
     for(j = 0; j < NSPECIES; j++) {
-        // printf("species %i\n",j);
+        // printf("\nspecies %i\n",j);
         for(t = 0; t < sizeof(thetas)/sizeof(double) - 1; t++) {
             // printf("theta %i: %lf\n",t, thetas[t]);
+            // printf("\nthetas[t+1]: %lf\tthetas[t]: %lf\n",thetas[t+1],thetas[t]);
             m0 = (u0[j][t+1] - u0[j][t]) / (thetas[t+1] - thetas[t]);
             b0 = u0[j][t] - m0 * thetas[t];
+
+            // printf("u0[t+1]: %lf\tu0[t]: %lf\n",u0[j][t+1],u0[j][t]);
+            // printf("m0: %lf\tb0: %lf\n",m0,b0);
 
             pfnlines[j][t][0][0] = m0;
             pfnlines[j][t][0][1] = b0;
@@ -144,11 +148,11 @@ void init_pfn(void) {
             m1 = (u1[j][t+1] - u1[j][t]) / (thetas[t+1] - thetas[t]);
             b1 = u1[j][t] - m1 * thetas[t];
 
+            // printf("u1[t+1]: %lf\tu1[t]: %lf\n",u1[j][t+1],u1[j][t]);
+            // printf("m1: %lf\tb1: %lf\n",m1,b1);
+
             pfnlines[j][t][1][0] = m1;
             pfnlines[j][t][1][1] = b1;
-            
-            // u0[j][t] = pow(10.,u0[j][t]);
-            // u1[j][t] = pow(10.,u1[j][t]);
         }
 
         pfnlines[j][9][0][0] = 0.;
@@ -180,14 +184,20 @@ double pfn_interp(int species, int state, double temp) {
     unsigned int t;
     double theta = 5040. / temp, m, b, u;
     
+    // find which range the temperature belongs for determining pfn
     for(t = 0; t < sizeof(thetas)/sizeof(double); t++) {
-        if(theta < thetas[t])
+        if(theta <= thetas[t])
             break;
     }
+    
+    // edge case where theta > 2.0 - use pfn for theta = 2.0
+    if(t >= sizeof(thetas)/sizeof(double))
+        return pow(10.,pfnlines[species][9][state][1]);
 
+    // interpolate btwn the two nearest thetas and their pfn vals on log scale
     m = pfnlines[species][t][state][0];
     b = pfnlines[species][t][state][1];
-    u = m * thetas[t] + b;
+    u = m * theta + b;
     return pow(10., u);
 }
 
@@ -251,36 +261,47 @@ double pg(double mcol) {
  * Calculates the population densities of all neutral and ion species
  * considered in the model IN ADDITION TO H- ion and e-.
  */
-double *popdensities(double pg, double pe, double temp) {
+double *popdensities(double pgf, double pef, double temp) {
     int j;
-    double *pops, *ptr, asum, ngas, nh;
+    double *pops, *ptr, asum, nh, nh1, nspeciestot, nspecies0, nspecies1;
 
     // Location where species populations are stored, including e- and H-
     pops = (double *) malloc((2 * NSPECIES + 2) * sizeof(double));
     ptr = pops;
 
     // electron number density
-    *ptr = pe / (k * temp);    
+    *ptr = pef / (k * temp);    
 
-    // H- number density
-    ptr++;
-    *ptr = 1.0;
-
-    // population of H
+    // H population statistics
     asum = 0.0;
     for (j = 0; j < NSPECIES; j++)
         asum += A[j];
 
-    ngas = pg / (k * temp);
+    nh = (pgf - pef) / (k * temp) / asum;
+    nh1 = nh / (pef/sahaphihminus + 1. + sahaphicurr[0]/pef);
 
-    nh = (pg - pe) / (k * temp) / asum;
+    // H- number density
+    ptr++;
+    *ptr = nh1 * pef / sahaphihminus;
 
-    // population of all elements
-    for (j = 0; j < NSPECIES; j++) {
+    // H I number density
+    ptr++;
+    *ptr = nh1;
+
+    // H II number density
+    ptr++;
+    *ptr = nh1 * sahaphicurr[0] / pef;
+
+    // population of all elements considered, excluding H-/HI/HII
+    for (j = 1; j < NSPECIES; j++) {
+        nspeciestot = nh * A[j];
+        nspecies0 = nspeciestot / (1. + sahaphicurr[j]/pef);
+        nspecies1 = nspeciestot - nspecies0;
+        
         ptr++;
-        *ptr = nh * A[j];
+        *ptr = nspecies0;
         ptr++;
-        *ptr = nh * A[j];
+        *ptr = nspecies1;
     }
 
     return pops;
@@ -345,19 +366,11 @@ int main(int argc, char **argv) {
         return err;
     }
 
+    // Parse atmosphere file (kurucz model)
     nrows = parsekurucz(f, &databuf);
-    (void)nrows;
 
-    (void)*pops;
-    (void)i;
-    (void)j;
-
-
+    // Initialize pfn and abundances via metallicity
     init_pfn();
-    
-    // printf("pfn_interp\n");
-    // double val = pfn_interp(0, 0, 5040/0.2);
-    // printf("val=%le\n",val);
     init_mtl();
 
     char *speciesnames[] = {
@@ -369,9 +382,8 @@ int main(int argc, char **argv) {
         "Ni I", "Ni II"     
     };
 
-    //replace nrows w 1
     // Calculate population densities for all levels in the Kurucz atmosphere
-    for(i = 0; i < 1; i++) {
+    for(i = 0; i < nrows; i++) {
         printf("\nLevel %i - %.5lf - %.2lf\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
         pops = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
         printf("---- SPECIES POPULATIONS ----\nspecies\t\t#/cm^3\n");

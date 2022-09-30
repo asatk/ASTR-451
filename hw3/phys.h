@@ -1,3 +1,11 @@
+/**
+ * Definition of general physical constants as well as properties of a star
+ * assumed true ubiquitously.
+ * 
+ * Author: Anthony Atkinson
+ * Date: 2021-09-30
+ */
+
 #define NSPECIES 10
 
 enum species {HYDROGEN, CARBON, SODIUM, MAGNESIUM, SILICON, POTASSIUM, CALCIUM,

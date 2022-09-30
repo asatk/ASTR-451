@@ -1,3 +1,13 @@
+/**
+ * Computes a model photosphere of a star with specified parameters. Model
+ * is based off of a Kurucz atmosphere, with gas pressure computed easily from
+ * the mass column. The populations present in the atmosphere are determined
+ * by the temperature and mass column.
+ * 
+ * Author: Anthony Atkinson
+ * Date: 2021-09-30
+ */
+
 #include <math.h>
 #include <float.h>
 #include <regex.h>
@@ -18,7 +28,7 @@ double logg = 4.44;
 double teff = 5777.;
 double mtl[NSPECIES] = {0., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
 char verbose = 0;
-double pfnlines[NSPECIES][10][2][2];
+double pfnlines[NSPECIES][10][2][2]; // [species][theta index][state][m=0,b=1]
 double sahaphicurr[NSPECIES];
 double sahaphihminus;
 
@@ -131,36 +141,33 @@ int parse(int argc, char **argv) {
 void init_pfn(void) {
     unsigned int j, t;
     double b0, m0, b1, m1;
+    // calculate interpolation parameters for each species
     for(j = 0; j < NSPECIES; j++) {
-        // printf("\nspecies %i\n",j);
+        /* determine slope and intercept of line connecting consecutive points
+           from the tabulated values in Table D.2 (Gray 3ed) */
         for(t = 0; t < sizeof(thetas)/sizeof(double) - 1; t++) {
-            // printf("theta %i: %lf\n",t, thetas[t]);
-            // printf("\nthetas[t+1]: %lf\tthetas[t]: %lf\n",thetas[t+1],thetas[t]);
+            // neutral species pfn
             m0 = (u0[j][t+1] - u0[j][t]) / (thetas[t+1] - thetas[t]);
             b0 = u0[j][t] - m0 * thetas[t];
-
-            // printf("u0[t+1]: %lf\tu0[t]: %lf\n",u0[j][t+1],u0[j][t]);
-            // printf("m0: %lf\tb0: %lf\n",m0,b0);
 
             pfnlines[j][t][0][0] = m0;
             pfnlines[j][t][0][1] = b0;
 
+            // singly-ionized species pfn
             m1 = (u1[j][t+1] - u1[j][t]) / (thetas[t+1] - thetas[t]);
             b1 = u1[j][t] - m1 * thetas[t];
-
-            // printf("u1[t+1]: %lf\tu1[t]: %lf\n",u1[j][t+1],u1[j][t]);
-            // printf("m1: %lf\tb1: %lf\n",m1,b1);
 
             pfnlines[j][t][1][0] = m1;
             pfnlines[j][t][1][1] = b1;
         }
 
+        /* Boundary case: theta > 2.0. want asymptotic behavior for pfn;
+           otherwise, for sufficiently low T (high theta), pfn is negative! */
         pfnlines[j][9][0][0] = 0.;
         pfnlines[j][9][0][1] = u0[j][9];
 
         pfnlines[j][9][1][0] = 0.;
         pfnlines[j][9][1][1] = u1[j][9];
-
     }
 }
 
@@ -358,6 +365,8 @@ int main(int argc, char **argv) {
 
     int err, nrows, i, j;
     double *databuf, *pops;
+    char *outfilename = "pops.dat", *str, *fmt_str, *cmd_str, *temp_name;
+    FILE *outfile;
 
     // Parse the command-line arguments
     if ((err = parse(argc, argv)) != 0) {
@@ -374,21 +383,56 @@ int main(int argc, char **argv) {
     init_mtl();
 
     char *speciesnames[] = {
-        "e-", "H-", "H I", "H II",
+        "e- ", "H- ", "H I", "H II",
         "C I", "C II", "Na I", "Na II",
         "Mg I", "Mg II", "Si I", "Si II",
         "K I", "K II", "Ca I", "Ca II",
         "Cr I", "Cr II", "Fe I", "Fe II",
-        "Ni I", "Ni II"     
+        "Ni I", "Ni II"    
     };
+
+    outfile = fopen(outfilename,"w");
+    fprintf(outfile, "#%-7s%-8s%-8s\n#%-7s%-10s%-8s\n","level","species","density","(#)","","(cm^-3)");
 
     // Calculate population densities for all levels in the Kurucz atmosphere
     for(i = 0; i < nrows; i++) {
-        printf("\nLevel %i - %.5lf - %.2lf\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
+        if (verbose)
+            printf("\nLevel %i - %.5lf - %.2lf\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
         pops = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
-        printf("---- SPECIES POPULATIONS ----\nspecies\t\t#/cm^3\n");
+        if (verbose)
+            printf("---- SPECIES POPULATIONS ----\nspecies\t\t#/cm^3\n");
         for(j = 0; j < 2 * NSPECIES + 2; j++) {
-            printf("%s\t\t%.3le\n",speciesnames[j], *(pops + j));
+            if (verbose)
+                printf("%s\t\t\t%.3le\n",speciesnames[j], *(pops + j));
+            temp_name = (char *) malloc(strlen(speciesnames[j]) + 2);
+            temp_name = strcpy(temp_name, speciesnames[j]);
+            temp_name = strcat(temp_name,"\'");
+            fprintf(outfile, "%-*i\'%-*s%-*lf\n",8,i,10,temp_name,12,*(pops + j));
         }
     }
+    // gnuplot cmds (in gnuplot, from bash shell, in C script)
+    // set terminal png size 400,400; set output 'H I.png'; plot "<(cat pops.dat | grep \"H I\'\" | cat)" using 4 title "H I"
+    // gnuplot -p -e "set terminal png size 500,500; set output 'H I.png'; plot '<(cat pops.dat | grep \"H I''\" | cat)' using 4 title 'H I'"
+    // system("gnuplot -p -e \"plot '<(cat pops.dat | grep \\\"H I''\\\" | cat)' using 4 title 'H I'\"");
+
+    // cmd_str = "gnuplot -p -e \"plot '<(cat pops.dat | grep \\\"H I''\\\" | cat)' using 4 title 'H I'\"";
+    // system(cmd_str);
+
+    // str = (char *) malloc(100 * sizeof(char));
+    // fmt_str = "gnuplot -p -e \"plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"";
+    // snprintf(str, 100, fmt_str, speciesnames[2],speciesnames[2]);
+    // system(str);
+    
+    str = (char *) malloc(150 * sizeof(char));
+    fmt_str = "gnuplot -e \"set terminal png size 500,500; set output '%s.png'; plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"";
+    for(j = 0; j < 2 * NSPECIES + 2; j++) {
+        snprintf(str, 150, fmt_str, speciesnames[j], speciesnames[j],speciesnames[j]);
+        system(str);
+    }
+
+    (void)str;
+    (void)fmt_str;
+    (void)cmd_str;
+
+    fclose(outfile);
 }

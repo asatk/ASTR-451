@@ -1,3 +1,11 @@
+/**
+ * Definition of general parsing methods. Uses linked list structure to read
+ * each row of data in a file. Parses numbers written in scientific notn.
+ * 
+ * Author: Anthony Atkinson
+ * Date: 2021-09-30
+ */
+
 #include <math.h>
 #include <regex.h>
 #include <stdio.h>

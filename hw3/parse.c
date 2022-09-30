@@ -1,6 +1,5 @@
 #include <math.h>
 #include <regex.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +45,8 @@ static void substring(char *s, char *buf, int b, int e) {
 /**
  * Parse a string in decimal format or scientific notation for its double
  * representation. Returns '0.0' for a string that does no match.
+ * 
+ * In retrospect, I think using scanf() with a %le argument would have sufficed
  * 
  * exp  string containing numeric expression
  */

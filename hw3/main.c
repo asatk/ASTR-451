@@ -23,8 +23,9 @@ double pg(double mcol);
 void sahaphi(double temp);
 double peguess(double pg);
 double pe(double pg, double pei);
-double computemodel(double mcol, double temp);
+double *computemodel(double mcol, double temp);
 void init_pfn(void);
+double *popdensities(double pg, double pe, double temp);
 
 // MUST DO METALLICITY ADJUSTMENTS TO ABUNDANCES
 
@@ -39,11 +40,14 @@ double peguess(double pg) {
     return -1. * sahaphicurr[0] + sqrt(pow(sahaphicurr[0],2.) + sahaphicurr[0] * pg);
 }
 
+
+// make approx btwn each theta. at large t (small theta) extend linearly.
+// at small t (large theta) use last value (u[j][9])
 void init_pfn(void) {
     int j;
     for(j = 0; j < NSPECIES; j++) {
-        u0[j] = pow(10.,u0[j]);
-        u1[j] = pow(10.,u1[j]);
+        u0[j][5] = pow(10.,u0[j][5]);
+        u1[j][5] = pow(10.,u1[j][5]);
         // printf("species %i: u0=%le\tu1=%le\n",j,u0[j],u1[j]);
     }
 }
@@ -60,7 +64,8 @@ void sahaphi(double temp) {
         // v1 = pow(temp, 5./2.);
         // v2 = pow(10., -5040.*I[j]/temp);
         // printf("v0=%le\tv1=%le\tv2=%le\tprod=%le\n",v0,v1,v2,v0*v1*v2); 
-        sahaphicurr[j] = 0.6665 * u1[j]/u0[j] * pow(temp, 5./2.) *
+        // uses theta=1.0 for all calcs
+        sahaphicurr[j] = 0.6665 * u1[j][5]/u0[j][5] * pow(temp, 5./2.) *
             pow(10., -5040.*I[j]/temp);
         // printf("species %i: sahaphi=%le\n",j,sahaphicurr[j]);
     }
@@ -86,46 +91,80 @@ double pe(double pg, double pei) {
     return pg * numer / denom;
 }
 
-double computemodel(double mcol, double temp) {
-    // double precision = 0.01;
+double *popdensities(double pg, double pe, double temp) {
+    int j;
+    double *pops, *ptr, asum, nh;
+
+    // Location where species populations are stored, including e- and H-
+    pops = (double *) malloc((2 * NSPECIES + 2) * sizeof(double));
+    ptr = pops;
+
+    // electron number density
+    *ptr = pe / (k * temp);    
+
+    // H- number density
+    ptr++;
+    *ptr = 1.0;
+
+    // population of H
+    asum = 0.0;
+    for (j = 0; j < NSPECIES; j++)
+        asum += A[j];
+
+    nh = (pg - pe) / (k * temp) / asum;
+
+
+    // population of all elements
+    for (j = 0; j < NSPECIES; j++) {
+        ptr++;
+        *ptr = nh * A[j];
+        ptr++;
+        *ptr = nh * A[j];
+    }
+
+    
+
+    return pops;
+
+
+}
+
+double *computemodel(double mcol, double temp) {
+    double precision = 1.e-7;
+    int itercount = 0;
     
     sahaphi(temp);
-
-    int m;
-    for(m = 0; m < NSPECIES; m++) {
-        // printf("species %i: sahaphi=%le\n",m,sahaphicurr[m]);
-    }
     
     double pgi = pg(mcol);
 
-    printf("mcol %le: pg=%le\n",mcol,pgi);
+    printf("pg=%le\n",pgi);
 
     double pei = peguess(pgi);
 
-    printf("electron pressure (Pe) initl: %le\n",pei);
+    printf("Pe initl: %le\n",pei);
     
-    int i;
+    // int i;
     /* Iteratively calculate Pg until its value converges to within 1% of the
        previous iteration's value */
-    for(i = 0; i < niters; i++) {
-        // printf("electron pressure (Pe) guess: %le\n",pei);
-        pei = pe(pgi, pei);
-    }
-    printf("electron pressure (Pe) final: %le\n",pei);
-    // do {
-    //     // Set current Pg guess to the previous estimate
-    //     pgi = pgf;
+    // for(i = 0; i < niters; i++) {
+    //     // printf("electron pressure (Pe) guess: %le\n",pei);
+    //     pei = pe(pgi, pei);
+    // }
+   
+    double pef = pei;
+    do {
+        pei = pef;
+        pef = pe(pgi, pei);
+        itercount++;
+    } while(fabs(pei - pef)/pef > precision);
+    pei = pef;
+    printf("Pe final: %le\n",pei);
+    printf("after %i iterations, converged with at least precision %le\n",itercount,precision);
 
-    //     // Calculate Pe from Pg guess, Pe guess, and T
+    double *pops;
+    pops = popdensities(pgi, pei, temp);
 
-    //     // Calculate Pg from guess at Pg with kappa(Pe, T)
-
-    //     printf("iteration %i\n\tpgi: %lf\n",i,pgi);
-    //     pgf = pg(pgi, tau0);
-    //     printf("pgf: %lf",pgf);
-    // } while((pgi - pgf)/pgf > precision);
-
-    return pei;
+    return pops;
 }
 
 /**
@@ -200,8 +239,8 @@ int parse(int argc, char **argv) {
  */
 int main(int argc, char **argv) {
 
-    int err, nrows, i;
-    double *databuf, val;
+    int err, nrows, i, j;
+    double *databuf, *pops;
 
     // Parse the command-line arguments
     if ((err = parse(argc, argv)) != 0) {
@@ -216,9 +255,12 @@ int main(int argc, char **argv) {
     init_pfn();
 
     //replace nrows w 1
-    for(i = 0; i < nrows; i++) {
-        printf("entry %i - %lf - %lf\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
-        val = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
-        printf("compute model val: %lf\n",val);
+    for(i = 44; i < 45; i++) {
+        printf("\nentry %i - %lf - %lf\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
+        pops = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
+        for(j = 0; j < 2 * NSPECIES + 2; j++) {
+            (void) pops;
+            printf("pop of item %i: %le\n",j, *(pops + j));
+        }
     }
 }

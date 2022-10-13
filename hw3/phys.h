@@ -11,15 +11,15 @@
 enum species {HYDROGEN, HELIUM, CARBON, SODIUM, MAGNESIUM, SILICON, POTASSIUM, CALCIUM,
     CHROMIUM, IRON, NICKEL};
 
-double G = 6.67e-11;    // gravitational constant, J m kg-2
-double k = 1.38e-23;    // boltmann constant, J K-1
-double mu = 1.66e-27;   // atomic mass unit, kg
+double G = 6.674e-8;    // gravitational constant, ergs cm g-2
+double k = 1.381e-16;   // boltzmann constant, J K-1
+double mu = 1.661e-24;  // atomic mass unit, g
 double tsol = 5.777e3;  // effective temperature of the sun (Sol)
-double Ihminus = 0.755; // ionization energy of H- ion
+double Ihminus = 0.754; // ionization energy of H- ion
 double fosc = 0.6546;   // oscillator strength (f) used in natural broadening
 double c4 = -15.17;     // log C4 constant for 
 double c6 = -31.7;      // log C6 constant for
-double gammadamp = 7.9;     // log gamma (damping) for natural broadening
+double gammadamp = 7.9; // log gamma (damping) for natural broadening
 
 /**
  * ABUNDANCES (# atom/# hydrogen, in the Sun)

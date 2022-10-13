@@ -244,7 +244,7 @@ void sahaphi(double temp) {
         sahaphicurr[j] = 0.6665 * pfn_interp(j, 1, temp)/pfn_interp(j, 0, temp) * pow(temp, 5./2.) *
             pow(10., -5040.*I[j]/temp);
     }
-    sahaphihminus = 0.6665 * pfn_interp(j, 0, temp)/1.0 * pow(temp, 5./2.) *
+    sahaphihminus = 0.6665 * pfn_interp(0, 0, temp)/1.0 * pow(temp, 5./2.) *
             pow(10., -5040.*Ihminus/temp);
 }
 
@@ -303,7 +303,7 @@ double *popdensities(double pgf, double pef, double temp) {
     pops = (double *) malloc((2 * NSPECIES + 2) * sizeof(double));
     ptr = pops;
 
-    // electron number density
+    // electron number densityz
     *ptr = pef / (k * temp);    
 
     // H population statistics
@@ -351,7 +351,7 @@ double *popdensities(double pgf, double pef, double temp) {
  * a corresponding number density: e-, H-, H I, H II, C I, C II, ...Ni I, Ni II
  */
 double *computemodel(double mcol, double temp) {
-    double pgi, pei, pef, precision = 1.e-7, *pops;
+    double pgi, pei, pef, precision = 1.e-10, *pops;
     int itercount = 0;
 
     // pre-calculate saha eqn Phi(T) for this level (temperature)

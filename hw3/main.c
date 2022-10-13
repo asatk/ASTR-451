@@ -26,9 +26,10 @@ extern char *optarg;
 char *f = "kurucz.txt";
 double logg = 4.44;
 double teff = 5777.;
-double mtl[NSPECIES] = {0., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
-char verbose = 0;
+double mtl[NSPECIES] = {0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
 char logscale = 0;
+int plotmode = 0;
+char verbose = 0;
 double pfnlines[NSPECIES][10][2][2]; // [species][theta index][state][m=0,b=1]
 double sahaphicurr[NSPECIES];
 double sahaphihminus;
@@ -58,7 +59,7 @@ int parse(int argc, char **argv) {
     int c;
 
     // Parse each character in the command-line argument string
-    while((c = getopt(argc, argv, ":f:g:hmot:v")) != -1) {
+    while((c = getopt(argc, argv, ":f:g:hmopt:v")) != -1) {
         switch (c) {
             case 'f':
                 // Parse filename (f) argument
@@ -76,8 +77,9 @@ int parse(int argc, char **argv) {
                     -f\tfilename=\"kurucz.txt\"\n\
                     -g\tlog gravity=4.44\n\
                     -h\thelp menu\n\
-                    -m\tmetallicity={0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}\n\
+                    -m\tmetallicity={0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.}\n\
                     -o\tlogscale=FALSE\n\
+                    -p\tplotmode=0\n\
                     -t\teffective temperature=5777.\n\
                     -v\tverbose=FALSE\n");
                 return 1;
@@ -90,15 +92,16 @@ int parse(int argc, char **argv) {
                     printf("Which metallicity would you like to update?\n\
                         0 - NONE\n\
                         1 - HYDROGEN\n\
-                        2 - CARBON\n\
-                        3 - SODIUM\n\
-                        4 - MAGNESIUM\n\
-                        5 - SILICON\n\
-                        6 - POTASSIUM\n\
-                        7 - CALCIUM\n\
-                        8 - CHROMIUM\n\
-                        9 - IRON\n\
-                        10 - NICKEL\n");
+                        2 - HELIUM\n\
+                        3 - CARBON\n\
+                        4 - SODIUM\n\
+                        5 - MAGNESIUM\n\
+                        6 - SILICON\n\
+                        7 - POTASSIUM\n\
+                        8 - CALCIUM\n\
+                        9 - CHROMIUM\n\
+                        10 - IRON\n\
+                        11 - NICKEL\n");
                     scanf(" %i",&mtlnum);
 
                     if(mtlnum == 0)
@@ -120,6 +123,15 @@ int parse(int argc, char **argv) {
                 break;
             case 'o':
                 logscale = 1;
+                break;
+            case 'p':
+                printf("Which plotting mode?\n\
+                    0 - OFF\n\
+                    1 - PNG\n\
+                    2 - PDF\n");
+                scanf(" %i",&plotmode);
+                if (plotmode == 2)
+                    printf("Plotting PDF only works if the program 'ps2pdf' is installed\n");
                 break;
             case 't':
                 // Parse temperature (teff) argument
@@ -378,7 +390,7 @@ double *computemodel(double mcol, double temp) {
  */
 void plot(char *speciesnames[]) {
     int j;
-    char str[250], fmt_str[250], title[10], titlej[10];
+    char str[300], fmt_str[300], title[10], titlej[10];
 
     // modifications for logscale in y
     if (logscale) {
@@ -390,15 +402,24 @@ void plot(char *speciesnames[]) {
     }
     
     // gnuplot command template
-    strcat(fmt_str,"set terminal png size 500,500; set output '%s.png'; set xlabel 'Photosphere Level'; set ylabel 'Number Density (%s per cm^{-3})'; plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"");
+    if (plotmode == 1)
+        strcat(fmt_str,"set terminal png size 500,500; set output '%s.png'; set xlabel 'Photosphere Level'; set ylabel 'Number Density (%s per cm^{-3})'; plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"");
+    else if (plotmode == 2)
+        strcat(fmt_str,"set terminal postscript; set output '| ps2pdf - \\\"%s.pdf\\\"'; set xlabel 'Photosphere Level'; set ylabel 'Number Density (%s per cm^{-3})'; plot '<(cat pops.dat | grep \\\"%s''\\\" | cat)' using 4 title '%s'\"");
     
+    // H- to e-
+    strcpy(titlej, title);
+    strcat(titlej, "H-e- ");
+    snprintf(str, 300, fmt_str, titlej, speciesnames[0], speciesnames[0], titlej);
+    system(str);
+
     // plot each species
-    for(j = 0; j < 2 * NSPECIES + 2; j++) {
+    for(j = 1; j < 2 * NSPECIES + 3; j++) {
         strcpy(titlej, title);
         strcat(titlej, speciesnames[j]);
         
         // complete template command
-        snprintf(str, 250, fmt_str, titlej, speciesnames[j], speciesnames[j], titlej);
+        snprintf(str, 300, fmt_str, titlej, speciesnames[j], speciesnames[j], titlej);
         
         // run command
         system(str);
@@ -434,12 +455,12 @@ int main(int argc, char **argv) {
     init_mtl();
 
     char *speciesnames[] = {
-        "e- ", "H- ", "H I", "H II",
-        "C I", "C II", "Na I", "Na II",
-        "Mg I", "Mg II", "Si I", "Si II",
-        "K I", "K II", "Ca I", "Ca II",
-        "Cr I", "Cr II", "Fe I", "Fe II",
-        "Ni I", "Ni II"    
+        "H-e- ", "e- ", "H- ", "H I", "H II",
+        "He I", "He II", "C I", "C II",
+        "Na I", "Na II", "Mg I", "Mg II",
+        "Si I", "Si II", "K I", "K II",
+        "Ca I", "Ca II", "Cr I", "Cr II",
+        "Fe I", "Fe II", "Ni I", "Ni II"    
     };
 
     outfile = fopen(outfilename,"w");
@@ -448,23 +469,32 @@ int main(int argc, char **argv) {
     // Calculate population densities for all levels in the Kurucz atmosphere
     for(i = 0; i < nrows; i++) {
         if (verbose)
-            printf("\nLevel %i - %.5lf - %.2lf\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
+            printf("\nLevel %i - %.5le - %.2le\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
         pops = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
         if (verbose)
-            printf("---- SPECIES POPULATIONS ----\nspecies\t\t#/cm^3\n");
+            printf("---- SPECIES POPULATIONS ----\n%-*s#/cm^3\n",10,"species");
         
+        // H- to e-
+        if (verbose)
+            printf("%-*s%.3le\n",10,speciesnames[0], *(pops + 1) / *(pops + 0));
+        temp_name = (char *) malloc(strlen(speciesnames[0]) + 2);
+        temp_name = strcpy(temp_name, speciesnames[0]);
+        temp_name = strcat(temp_name,"\'");
+        fprintf(outfile, "%-*i\'%-*s%-*le\n",8,i,10,temp_name,12, *(pops + 1) / *(pops + 0));
+
         // print each species and its density to outfile and stdin if verbose
         for(j = 0; j < 2 * NSPECIES + 2; j++) {
             if (verbose)
-                printf("%s\t\t\t%.3le\n",speciesnames[j], *(pops + j));
-            temp_name = (char *) malloc(strlen(speciesnames[j]) + 2);
-            temp_name = strcpy(temp_name, speciesnames[j]);
+                printf("%-*s%.3le\n",10,speciesnames[j + 1], *(pops + j));
+            temp_name = (char *) malloc(strlen(speciesnames[j + 1]) + 2);
+            temp_name = strcpy(temp_name, speciesnames[j + 1]);
             temp_name = strcat(temp_name,"\'");
-            fprintf(outfile, "%-*i\'%-*s%-*lf\n",8,i,10,temp_name,12,*(pops + j));
+            fprintf(outfile, "%-*i\'%-*s%-*le\n",8,i,10,temp_name,12,*(pops + j));
         }
     }
 
     fclose(outfile);
-    
-    plot(speciesnames);
+
+    if (plotmode != 0)
+        plot(speciesnames);
 }

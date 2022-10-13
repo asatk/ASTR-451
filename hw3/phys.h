@@ -6,9 +6,9 @@
  * Date: 2021-09-30
  */
 
-#define NSPECIES 10
+#define NSPECIES 11
 
-enum species {HYDROGEN, CARBON, SODIUM, MAGNESIUM, SILICON, POTASSIUM, CALCIUM,
+enum species {HYDROGEN, HELIUM, CARBON, SODIUM, MAGNESIUM, SILICON, POTASSIUM, CALCIUM,
     CHROMIUM, IRON, NICKEL};
 
 double G = 6.67e-11;    // gravitational constant, J m kg-2
@@ -16,6 +16,10 @@ double k = 1.38e-23;    // boltmann constant, J K-1
 double mu = 1.66e-27;   // atomic mass unit, kg
 double tsol = 5.777e3;  // effective temperature of the sun (Sol)
 double Ihminus = 0.755; // ionization energy of H- ion
+double fosc = 0.6546;   // oscillator strength (f) used in natural broadening
+double c4 = -15.17;     // log C4 constant for 
+double c6 = -31.7;      // log C6 constant for
+double gammadamp = 7.9;     // log gamma (damping) for natural broadening
 
 /**
  * ABUNDANCES (# atom/# hydrogen, in the Sun)
@@ -23,6 +27,7 @@ double Ihminus = 0.755; // ionization energy of H- ion
  */
 double A[] = {
     1.00e+0,    //H
+    8.51e-2,    //He
     3.31e-4,    //C
     2.14e-6,    //Na
     3.80e-5,    //Mg
@@ -40,6 +45,7 @@ double A[] = {
  */
 double I[] = {
     13.598,     //H
+    24.587,     //He
     11.260,     //C
     5.139,      //Na
     7.646,      //Mg
@@ -57,6 +63,7 @@ double I[] = {
  */
 double amu[] = {
     1.008,      //H
+    4.003,      //He
     12.011,     //C
     22.990,     //Na
     24.305,     //Mg
@@ -80,6 +87,7 @@ double thetas[10] = {0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0};
 double u0[][10] = {
 //   0.2    0.4    0.6    0.8    1.0    1.2    1.4    1.6    1.8    2.0
     {0.368, 0.303, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301}, //H
+    {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, //He
     {1.163, 1.037, 0.994, 0.975, 0.964, 0.958, 0.954, 0.951, 0.950, 0.948}, //C
     {4.316, 1.043, 0.493, 0.357, 0.320, 0.309, 0.307, 0.306, 0.306, 0.306}, //Na
     {2.839, 0.478, 0.110, 0.027, 0.007, 0.002, 0.001, 0.001, 0.001, 0.000}, //Mg
@@ -98,6 +106,7 @@ double u0[][10] = {
 double u1[][10] = {
 //   0.2    0.4    0.6    0.8    1.0    1.2    1.4    1.6    1.8    2.0
     {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, //H+
+    {0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301}, //He+
     {0.853, 0.782, 0.775, 0.774, 0.773, 0.772, 0.771, 0.770, 0.769, 0.767}, //C+
     {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, //Na+
     {0.537, 0.326, 0.304, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301}, //Mg+

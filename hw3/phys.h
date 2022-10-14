@@ -11,21 +11,24 @@
 enum species {HYDROGEN, HELIUM, CARBON, SODIUM, MAGNESIUM, SILICON, POTASSIUM, CALCIUM,
     CHROMIUM, IRON, NICKEL};
 
-double G = 6.674e-8;    // gravitational constant, ergs cm g-2
-double k = 1.381e-16;   // boltzmann constant, J K-1
-double mu = 1.661e-24;  // atomic mass unit, g
-double tsol = 5.777e3;  // effective temperature of the sun (Sol)
-double Ihminus = 0.754; // ionization energy of H- ion
-double fosc = 0.6546;   // oscillator strength (f) used in natural broadening
-double c4 = -15.17;     // log C4 constant for 
-double c6 = -31.7;      // log C6 constant for
-double gammadamp = 7.9; // log gamma (damping) for natural broadening
+static double c = 2.998e10;     // speed of light, cm s-1
+static double G = 6.674e-8;    // gravitational constant, ergs cm g-2
+static double k = 1.381e-16;   // boltzmann constant, J K-1
+static double mu = 1.661e-24;  // atomic mass unit, g
+static double me = 9.109e-28;  // electron mass, g
+static double qe = 1.602e-19;  // electron charge, C 4.803e-10 e.s.u. in mks units p 233 Gray
+static double tsol = 5.777e3;  // effective temperature of the sun (Sol)
+static double Ihminus = 0.754; // ionization energy of H- ion
+static double fosc = 0.6546;   // oscillator strength (f) used in natural broadening
+static double c4 = -15.17;     // log C4 constant for 
+static double c6 = -31.7;      // log C6 constant for
+static double gammanat = 7.9;  // log gamma (damping) for natural broadening
 
 /**
  * ABUNDANCES (# atom/# hydrogen, in the Sun)
  * per Table 16.3 (Gray, 3ed)
  */
-double A[] = {
+static double A[] = {
     1.00e+0,    //H
     8.51e-2,    //He
     3.31e-4,    //C
@@ -43,7 +46,7 @@ double A[] = {
  * IONIZATIONS (eV for 1st ionization)
  * per Table D.1 (Gray, 3ed)
  */
-double I[] = {
+static double I[] = {
     13.598,     //H
     24.587,     //He
     11.260,     //C
@@ -61,7 +64,7 @@ double I[] = {
  * ATOMIC WEIGHTS (amu)
  * per Table D.1 (Gray, 3ed)
  */
-double amu[] = {
+static double amu[] = {
     1.008,      //H
     4.003,      //He
     12.011,     //C
@@ -78,13 +81,13 @@ double amu[] = {
 /**
  * Theta values corresponding to the tabulated partition function argument
  */
-double thetas[10] = {0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0};
+static double thetas[10] = {0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0};
 
 /**
  * PARTITION FUNCTIONS for NEUTRAL SPECIES
  * per Table D.2 (Gray, 3ed)
  */
-double u0[][10] = {
+static double u0[][10] = {
 //   0.2    0.4    0.6    0.8    1.0    1.2    1.4    1.6    1.8    2.0
     {0.368, 0.303, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301}, //H
     {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, //He
@@ -103,7 +106,7 @@ double u0[][10] = {
  * PARTITION FUNCTIONS for SINGLY-IONIZIED SPECIES at theta=1.0
  * per Table D.2 (Gray, 3ed)
  */
-double u1[][10] = {
+static double u1[][10] = {
 //   0.2    0.4    0.6    0.8    1.0    1.2    1.4    1.6    1.8    2.0
     {0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000}, //H+
     {0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301, 0.301}, //He+

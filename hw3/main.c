@@ -16,6 +16,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "absorption.h"
 #include "parse.h"
 #include "phys.h"
 
@@ -44,6 +45,7 @@ double peguess(double pg);
 double pe(double pg, double pei);
 double pg(double mcol);
 double *popdensities(double pg, double pe, double temp);
+// double widths(double pef, double temp);
 double *computemodel(double mcol, double temp);
 
 
@@ -341,6 +343,24 @@ double *popdensities(double pgf, double pef, double temp) {
     return pops;
 }
 
+// p 186 Gray
+// double computeflux() {
+//     2 * PI * intg_-inf^inf S_v(Tau0) Exp(Tau_v)
+// }
+
+// double widths(double pef, double temp) {
+//     double alpha, gamma4, gamma6, gammatot;
+//     gamma4 = pow(10., 19 + 2./3. * log10(c4) + log10(pef) - 5./6. * log10(temp));
+//     gamma6 = pow(10., 20 + 0.4 * log10(c6) + log10(pef) - 0.7 * log10(temp));
+
+//     gammatot = gammanat + gamma4 + gamma6;
+
+//     // alpha = pow(qe, 2.) / (me * pow(c, 2.))
+
+//     return gammatot;
+
+// }
+
 /**
  * Solves the atmosphere for a given level, determined by its mass column and
  * temperature. The gas pressure, electron pressure, and population densities
@@ -381,6 +401,8 @@ double *computemodel(double mcol, double temp) {
 
     // determine population densities for each species desired
     pops = popdensities(pgi, pef, temp);
+
+    // (void) widths(pef, temp);
 
     return pops;
 }
@@ -498,3 +520,6 @@ int main(int argc, char **argv) {
     if (plotmode != 0)
         plot(speciesnames);
 }
+
+// Prevent "unused function" and "unused variable" warnings.
+static const void *dummy_ref[] = {amu, &fosc, &tsol, &qe, &me, &mu, &G, &c, &gammanat, &c4, &c6, dummy_ref};

@@ -26,7 +26,8 @@ extern char *optarg;
 
 /* GLOBAL VARIABLES */
 char *f = "kurucz.txt";
-char *outfilename = "pops.dat";
+char *outfilenamepops = "pops.dat";
+char *outfilenameflux = "flux.dat";
 double logg = 4.44;
 double teff = 5777.;
 double mtl[NSPECIES] = {0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
@@ -40,6 +41,8 @@ double linemin = 5885.;
 double linemax = 5895.;
 double linecnt = 5890.;
 double lineinc = 0.1;
+double *tauccurr;
+double *taulcurr;
 
 /* FUNCTION PROTOTYPES */
 int parse(int argc, char **argv);
@@ -52,9 +55,9 @@ double peguess(double pg);
 double pe(double pg, double pei);
 double pg(double mcol);
 double *popdensities(double pg, double pe, double temp);
-double *computemodel(double mcol, double temp, double *flux);
+double *computemodel(double mcol, double dmcol, double temp, double *flux);
 void printlevel(double *pops, int level, FILE *outfile);
-double *lineflux(double *pops, double *flux, double mcol, double temp, double pef, double pgf);
+double *lineflux(double *flux, double mcol, double temp, double pef, double pgf);
 void plotpops();
 
 
@@ -361,7 +364,7 @@ double *popdensities(double pgf, double pef, double temp) {
  * memory location with 2 * NSPECIES + 2 double elements. Each element contains
  * a corresponding number density: e-, H-, H I, H II, C I, C II, ...Ni I, Ni II
  */
-double *computemodel(double mcol, double temp, double *flux) {
+double *computemodel(double mcol, double dmcol, double temp, double *flux) {
     double pgf, pei, pef, precision = 1.e-10, *pops;
     int itercount = 0;
 
@@ -393,10 +396,10 @@ double *computemodel(double mcol, double temp, double *flux) {
     // determine population densities for each species desired
     pops = popdensities(pgf, pef, temp);
 
-    flux = lineflux(pops, flux, mcol, temp, pef, pgf);
+    lineflux(flux, dmcol, temp, pef, pgf);
 
     if (verbose)
-        printf("continuum absorption coefficient for 5885A: %.3le\n", k_total(pef, pgf, temp, 5885., sahaphicurr[HYDROGEN]));
+        printf("continuum absorption coefficient for 5890A: %.3le\n", k_total(temp, pef, pgf, 5890., sahaphicurr[HYDROGEN]));
 
     return pops;
 }
@@ -427,35 +430,78 @@ void printlevel(double *pops, int level, FILE *outfile) {
     }
 }
 
-double *lineflux(double *pops, double *flux, double mcol, double temp, double pef, double pgf) {
+double *lineflux(double *flux, double dmcol, double temp, double pef, double pgf) {
     int i, nsteps;
-    double ell, kappa, lambda, *ptr, tau, dtau;
+    double ell, kappa, lambda, *ptrflux, *ptrtauc, *ptrtaul, tauc, taul, dtauc, dtaul, fluxc, fluxl;
 
-    (void)pops;
-
-    printf("TEMP: %.3le\n",temp);
+    printf("TEMP: %-*.3lePE: %-*.3lePG: %-*.3le\n",12,temp,12,pef,12,pgf);
 
     nsteps = (linemax - linemin) / lineinc;
-    kappa = k_total(temp, pef, pgf, linemin, sahaphicurr[HYDROGEN]);
-    tau = (pow(temp / teff, 4.) * 4. - 2.) / 3.;
-
-    printf(" - kappa: %.3le\n",kappa);
 
     // find way to customize boltzmann for given line
-    double boltz = 2 * pow(10., 5040 / temp * ) / pfn_interp(SODIUM, , temp);
+    double boltz = 2. * pow(10., -5040 / temp * 0.) / pfn_interp(SODIUM, 0, temp) / (1. + sahaphicurr[SODIUM] / pef);
+    // printf("sahaphiNA: %.4le\n",sahaphicurr[SODIUM]/pef);
+    // printf("boltz: %.4le\n",boltz);
 
-    ptr = flux;
-    for (i = 0; i < nsteps; i++) {
+    ptrtauc = tauccurr;
+    ptrtaul = taulcurr;
+    ptrflux = flux;
+    for (i = 0; i <= nsteps; i++) {
+
+        // printf("tauc: %-*.3letaul: %-*.3le\n",12,tauc,12,taul);
         lambda = linemin + i * lineinc;
-        // printf("computing flux at %.1lf\n", lambda);
+        // printf("LAM-%.1lf\n", lambda);
         
-        // kappa = k_total(temp, pef, pgf, lambda, sahaphicurr[HYDROGEN]);
-        ell = ell_total(temp, pef, pgf, lambda, linecnt);
-        dtau = (kappa + ell) * mcol;
+        kappa = k_total(temp, pef, pgf, lambda, sahaphicurr[HYDROGEN]);
+        ell = ell_total(temp, pef, pgf, lambda, linecnt, SODIUM, boltz);
 
-        *ptr += 2 * M_PI * planck(temp, lambda) * e2(tau) * dtau;
-        ptr++;
+        dtauc = kappa * dmcol;
+        dtaul = (kappa + ell) * dmcol;
+
+        *ptrtauc += dtauc;
+        *ptrtaul += dtaul;
+
+        //could put before or after
+        tauc = *ptrtauc;
+        taul = *ptrtaul;
+
+        
+
+
+        // printf("kappa: %.3le\n",kappa);
+        // printf("ell: %.3le\n",ell);
+
+        // printf("ell %-*.3le\n",15,ell);
+
+        // printf("e2(tauc): %-*.3lee2(taul): %-*.3le\n",12,e2(tauc),12,e2(taul));
+
+        // Eq. 7.15 (Gray 3ed)
+        fluxc = 2 * M_PI * planck(temp, lambda * 1e-8) * e2(tauc) * dtauc;
+        fluxl = 2 * M_PI * planck(temp, lambda * 1e-8) * e2(taul) * dtaul;
+
+        if (lambda == linecnt || lambda == linemin) {
+            printf("%-*.4le%-*.4le%-*.4le\n",15,lambda,15,kappa,15,ell);
+            printf("planck: %-*.4lee2c: %-*.4lee2l: %-*.4le\n",15,planck(temp, lambda * 1e-8),15,e2(tauc),15,e2(taul));
+            printf("tauc: %-*.4ledtauc: %-*.4lefluxc: %-*.4letaul: %-*.4ledtaul: %-*.4lefluxl: %-*.4le\n",15,tauc,15,dtauc,15,fluxc,15,taul,15,dtaul,15,fluxl);
+            printf("l/c: %.3le\n",fluxl/fluxc);
+        }
+
+        // *ptrflux += (fluxc > 0.) ? fluxl / fluxc : 0.;
+        
+        *ptrflux += fluxl;
+        ptrflux++;
+        *ptrflux += fluxc;
+
+        // printf("fluxl: %-*.3le\n",15,fluxl);
+        // printf("fluxc: %-*.3le\n",15,fluxc);
+        // printf("*ptr: %-*.3lefluxl/fluxc: %-*.3le\n",15,*ptr,15,fluxl/fluxc);
+
+        ptrtauc++;
+        ptrtaul++;
+        ptrflux++;
     }
+
+    printf("-----------------\n");
 
     return flux;
 }
@@ -510,9 +556,9 @@ void plotpops() {
  */
 int main(int argc, char **argv) {
 
-    int err, nrows, i;
-    double *databuf, *pops, *flux;
-    FILE *outfile;
+    int err, nrows, nsteps, i, j;
+    double *databuf, *pops, *flux, *ptr, dmcol;
+    FILE *outfilepops, *outfileflux;
 
     // Parse the command-line arguments
     if ((err = parse(argc, argv)) != 0) {
@@ -529,26 +575,54 @@ int main(int argc, char **argv) {
     init_mtl();
 
     // Open output file to write
-    outfile = fopen(outfilename,"w");
-    fprintf(outfile, "#%-7s%-8s%-8s\n#%-7s%-10s%-8s\n","level","species","density","(#)","","(cm^-3)");
+    outfilepops = fopen(outfilenamepops,"w");
+    fprintf(outfilepops, "#%-7s%-8s%-8s\n#%-7s%-10s%-8s\n","level","species","density","(#)","","(cm^-3)");
 
+    nsteps = (linemax - linemin) / lineinc;
     // Calculate population densities  and flux for all levels in Kurucz atmos
-    flux = (double *) calloc((linemax - linemin) / lineinc, sizeof(double));
-    for(i = 0; i < nrows; i++) {
-        if (verbose)
-            printf("\nLevel %i - %.5le - %.2le\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
-        pops = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1), flux);
-        
-        printlevel(pops, i, outfile);
+    // flux = (double *) calloc((linemax - linemin) / lineinc, sizeof(double));
+    flux = (double *) malloc(2 * (nsteps + 1) * sizeof(double));
+    ptr = flux;
+    for(j = 0; j < 2 * (nsteps + 1); j++) {
+        *ptr = 0.;
+        ptr++;
     }
 
-    fclose(outfile);
+    tauccurr = (double *) malloc((nsteps + 1) * sizeof(double));
+    taulcurr = (double *) malloc((nsteps + 1) * sizeof(double));
+
+    double *ptrl = taulcurr, *ptrc = tauccurr;
+    for(j = 0; j < nsteps + 1; j++) {
+        *ptrl = 0.;
+        *ptrc = 0.;
+        ptrl++;
+        ptrc++;
+    }
+
+    for(i = 0; i < nrows; i++) {
+        dmcol = (i == 0) ? *(databuf) : *(databuf + 2 * i) - *(databuf + 2 * (i - 1));
+        if (verbose)
+            printf("\nLevel %i - %.5le - %.2le\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
+        pops = computemodel(*(databuf + 2 * i), dmcol, *(databuf + 2 * i + 1), flux);
+        
+        printlevel(pops, i, outfilepops);
+    }
+
+    fclose(outfilepops);
 
     if (plotmode != 0)
         plotpops();
+
+    outfileflux = fopen(outfilenameflux, "w");
+
+    for(j = 0; j < 2 * (nsteps + 1); j+=2) {
+        fprintf(outfileflux, "%-*.4le%-*.4le\n",15,linemin + j * lineinc,15,*(flux + j) / *(flux + j + 1));
+    }
+
+    fclose(outfileflux);
 }
 
 // Prevent "unused function" and "unused variable" warnings.
 static const void *dummy_ref[] = {amu, contjumps, &fosc, &tsol, &qe, &qeesu,
-    &me, &mu, &G, &h, &c, &loge, &a0, &R, &gammanat, &c4, &c6,
+    &me, &mu, &G, &h, &c, &a0, &R, &gammanat, &c4, &c6, hjertu, hjert,
     dummy_ref};

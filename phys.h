@@ -29,7 +29,6 @@ static double tsol = 5.777e3;  // effective temperature of the sun (Sol)
 static double Ihminus = 0.754; // ionization energy of H- ion
 static double a0 = 1.0449e-26; // for lambda in angstroms
 static double R = 1.0968e-3;   // for lambda in angstroms
-static double loge = 0.43429;  // log10(e)
 
 // these may be variable parameters... put in main and parse with line command
 static double fosc = 0.6546;   // oscillator strength (f) used in natural broadening for this line

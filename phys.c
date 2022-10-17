@@ -4,12 +4,15 @@
 
 #include "phys.h"
 
+/**
+ * Lambda in cgs
+*/
 double planck(double temp, double lambda) {
     return 2 * h * pow(c, 2.) / (pow(lambda, 5.) * (exp(h * c / (lambda * k * temp)) - 1));
 }
 
 double e1(double x) {
-    if (x <= 1)
+    if (x > 0. && x <= 1)
         return -1. * log(x) -
                      0.57721566 +
                      0.99999193 * x -
@@ -31,10 +34,12 @@ double e1(double x) {
             3.9584969228) / (
             x * exp(x));
     else
-        return NAN;
+        return INFINITY;
 }
 
 double e2(double x) {
+    if (x == 0.)
+        return 1.;
     return exp(-x) - x * e1(x);
 }
 
@@ -44,12 +49,12 @@ double hjerting(double u, double a) {
 
     u = fabs(u) + 1e-50;
 
-    for (i = 0; i < (int) sizeof(hjertu) / sizeof(double) && u > hjertu[i]; i++);
+    for (i = 0; i < (int) (sizeof(hjertu) / sizeof(double)) && u > hjertu[i]; i++);
 
     // printf("i: %d\tu: %.3lf\thjertu[i]: %.3lf\n",i, u, hjertu[i]);
 
     // printf("i: %i\n",i);
-    if (i >= sizeof(hjertu) / sizeof(double)) {
+    if (i >= (int) (sizeof(hjertu) / sizeof(double))) {
         // printf("wing regime\n");
         hjertwing = (0.56419 * pow(u, -2.) + 0.846 * pow(u, -4.)) * a +
                 (-0.56 * pow(u, -4.)) * pow(a, 3.);
@@ -68,5 +73,5 @@ double hjerting(double u, double a) {
 }
 
 static const void *dummy_ref[] = {dummy_ref, &c, &G, &h, &k, &mu, &me, &qe,
-    &qeesu, &tsol, &Ihminus, &a0, &R, &loge, &fosc, &c4, &c6, &gammanat,
+    &qeesu, &tsol, &Ihminus, &a0, &R, &fosc, &c4, &c6, &gammanat,
     speciesnames, A, I, amu, thetas, u0, u1, contjumps};

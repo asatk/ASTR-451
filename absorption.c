@@ -42,6 +42,7 @@ static double g_bf(int n, double lambdaR) {
     // double R = 1.0968e-3;          // for lambda in angstroms
     // lambdaR is product
 
+    // Eq. 8.5 (Gray 3ed)
     return 1 - 0.3456 * pow(lambdaR, -1./3.) * (lambdaR / pow(n, 2) - 0.5);
 }
 
@@ -52,7 +53,6 @@ static double k_hbf(double temp, double lambda) {
 
     int n, n0;
     double theta, sum;
-
     
     for (n0 = 0; n0 < (int) (sizeof(contjumps) / sizeof(double)); n0++) {
         if (lambda < contjumps[n0])
@@ -62,19 +62,14 @@ static double k_hbf(double temp, double lambda) {
 
     theta = 5040. / temp;
 
-    // a0 = 1.0449e-26;        // for lambda in angstroms
-    // R = 1.0968e-3;          // for lambda in angstroms
-
-    //log e = 0.43429
-
     sum = 0.;
-    for (n = n0; n < n0 + 3; n++) {
+    for (n = n0; n <= n0 + 2; n++) {
         sum += g_bf(n, lambda * R) * pow(10., -theta * chi(n)) / pow(n, 3.);
     }
 
-    // printf("sum of gbf * 10^theta*chi/n^3: %.3le\n", sum);
-
-    return a0 * pow(lambda, 3.) * (sum + loge / (2 * theta * I[HYDROGEN]) * (pow(10., -theta * chi(3)) - pow(10., -theta * I[HYDROGEN])));
+    // Eq. 8.8 (Gray 3ed)
+    return a0 * pow(lambda, 3.) * (sum + M_LOG10E / (2 * theta * I[HYDROGEN]) *
+            (pow(10., -theta * chi(3)) - pow(10., -theta * I[HYDROGEN])));
 
 }
 
@@ -84,9 +79,11 @@ static double k_hff(double temp, double lambda) {
 
     theta = 5040. / temp;
 
-    g_ff = 1 + 0.3456 * pow(lambda * R, -1./3.) * ((loge * lambda) / (1.2398e4 * theta) + 0.5);
+    // Eq. 8.6 (Gray 3ed)
+    g_ff = 1 + 0.3456 * pow(lambda * R, -1./3.) * ((M_LOG10E * lambda) / (1.2398e4 * theta) + 0.5);
 
-    return a0 * pow(lambda, 3.) * g_ff * loge / (2 * theta * I[HYDROGEN]) * pow(10., -theta * I[HYDROGEN]);
+    // Eq. 8.10 (Gray 3ed)
+    return a0 * pow(lambda, 3.) * g_ff * M_LOG10E / (2 * theta * I[HYDROGEN]) * pow(10., -theta * I[HYDROGEN]);
 }
 
 /**
@@ -97,6 +94,7 @@ static double k_hminusbf(double temp, double pef, double lambda) {
 
     theta = 5040. / temp;
 
+    // Eq. 8.11 (Gray 3ed)
     a_bf =  1.99654 -                       // a0
             1.18267e-05 * lambda +          // a1 * lam
             2.64243e-06 * pow(lambda, 2.) - // a2 * lam^2
@@ -105,7 +103,8 @@ static double k_hminusbf(double temp, double pef, double lambda) {
             1.39568e-18 * pow(lambda, 5.) + // a5 * lam^5
             2.78701e-23 * pow(lambda, 6.);  // a6 * lam^6
 
-    return 4.158e-10 * a_bf * pef * pow(theta, 5./2.) * pow(10., Ihminus * theta);
+    // Eq 8.12 (Gray 3ed)
+    return 4.158e-10 * 1.e-18 * a_bf * pef * pow(theta, 5./2.) * pow(10., Ihminus * theta);
 }
 
 /**
@@ -133,14 +132,11 @@ static double k_hminusff(double temp, double pef, double lambda) {
             10.6913 * pow(loglambda, 3.) -
             0.625151 * pow(loglambda, 4.);
 
+    // Eq 8.13 (Gray 3ed)
     return 1.e-26 * pef *
             pow(10., f0 + f1 * logtheta + f2 * pow(logtheta, 2.));
 
 }
-
-// double k_h2plus()
-
-// double k_heminusff()
 
 static double k_e(double pef, double pgf) {
     int j;
@@ -150,12 +146,8 @@ static double k_e(double pef, double pgf) {
     for (j = 0; j < NSPECIES; j++)
         asum += A[j];
 
-    // this could also be just ratio of Ne- to NH depending on how I do this p 162 Gray
+    // Eq 8.17 (Gray 3ed)
     return 0.6648e-24 * pef / (pgf - pef) * asum;
-}
-
-static double k_metals() {
-    return 0.;
 }
 
 double k_total(double temp, double pef, double pgf, double lambda, double sahaphiH) {
@@ -175,9 +167,10 @@ double k_total(double temp, double pef, double pgf, double lambda, double sahaph
     //         k_e(pef, pgf),
     //         k_metals());
 
+    // Eq. 8.18 (Gray 3ed)
     k_tot = ((k_hbf(temp, lambda) + k_hff(temp, lambda) +
         k_hminusbf(temp, pef, lambda)) * sef + k_hminusff(temp, pef, lambda)) *
-        phpf + k_e(pef, pgf) + k_metals();
+        phpf + k_e(pef, pgf);
 
     msum = 0.0;
     for (j = 0; j < NSPECIES; j++)
@@ -185,6 +178,7 @@ double k_total(double temp, double pef, double pgf, double lambda, double sahaph
 
     // printf("k_tot: %.3le\nmsum: %.3le\n", k_tot, msum);
 
+    // Eq. 8.19 (Gray 3ed)
     return k_tot / msum;
 }
 
@@ -211,27 +205,30 @@ double ell_total(double temp, double pef, double pgf, double lambda,
     sef = (1 - pow(10., -1.2398e4 * 5040. / temp / lambda));
 
     // Collision broadening - quadratic Stark
-    gamma4 = pow(10., 19 + 2./3. * log10(c4) + log10(pef) - 5./6. * log10(temp));
+    gamma4 = pow(10., 19. + 2./3. * c4 + log10(pef) - 5./6. * log10(temp));
     // Collision broadening - van der Waals
-    gamma6 = pow(10., 20 + 0.4 * log10(c6) + log10(pgf) - 0.7 * log10(temp));
+    gamma6 = pow(10., 20. + 0.4 * c6 + log10(pgf) - 0.7 * log10(temp));
     // Total Lorentz width/damping
-    gamma_tot = gamma4 + gamma6 + gammanat;
-
+    gamma_tot = gamma4 + gamma6 + pow(10., gammanat);
+    // Doppler width (Gaussian), Eq. 11.39
+    dlamdopp = 4.301e-7 * (linecenter) * pow(temp / (amu[species]), 1. / 2.);
     // Distance from line center
     dlam = lambda - linecenter;
-    // Doppler width (Gaussian)
-    dlamdopp = 4.301e-7 * (linecenter) * pow(temp / amu[species], 1. / 2.);
 
     // Hjerting function parameters
+    // Eq. 11.47/11.55 (Gray 3ed)
     a = 2.65e-20 * gamma_tot * pow(linecenter, 2.) / dlamdopp;
     u = dlam / dlamdopp;
 
-    // Eq. 11.54    
+    // printf("dlam: %-*.3ledlamdopp: %-*.3legamma_tot: %-*.3lea: %-*.3le\n",12,dlam,12,dlamdopp,12,gamma_tot,12,a);
+    // printf("lambda: %-*.3lehjert: %-*.3le\n",12,lambda,12,hjerting(u,a));
+
+    // Eq. 11.54 (Gray 3ed)   
     return 4.995e-21 * (hjerting(u, a) * pow(linecenter, 2.) * A[species] *
         fosc * sahaboltzelement) / (dlamdopp * msum) * sef;
 }
 
 
 // Prevent "unused function" and "unused variable" warnings.
-static const void *dummy_ref[] = {amu, &fosc, &tsol, &qe, &me, &mu, &G, &h, &c,
-    &k, &gammanat, &c4, &c6, u0, u1, thetas, speciesnames, dummy_ref};
+static const void *dummy_ref[] = {amu, &fosc, &tsol, &qe, &qeesu, &me, &mu, &G, &h, &c,
+    &k, &gammanat, &c4, &c6, u0, u1, thetas, speciesnames, hjertu, hjert, dummy_ref};

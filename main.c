@@ -27,7 +27,7 @@ extern char *optarg;
 /* GLOBAL VARIABLES */
 char *f = "kurucz.txt";
 char *outfilenamepops = "pops.dat";
-char *outfilenameflux = "flux.dat";
+char *outfilenameflux = "flux_lowg.dat";
 double logg = 4.44;
 double teff = 5777.;
 double mtl[NSPECIES] = {0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
@@ -40,7 +40,7 @@ double sahaphihminus;
 double linemin = 5885.;
 double linemax = 5895.;
 double linecnt = 5890.;
-double lineinc = 0.1;
+double lineinc = 0.01;
 double *tauccurr;
 double *taulcurr;
 
@@ -432,76 +432,54 @@ void printlevel(double *pops, int level, FILE *outfile) {
 
 double *lineflux(double *flux, double dmcol, double temp, double pef, double pgf) {
     int i, nsteps;
-    double ell, kappa, lambda, *ptrflux, *ptrtauc, *ptrtaul, tauc, taul, dtauc, dtaul, fluxc, fluxl;
+    double sahaboltzelement,ell, kappa, lambda, *ptrflux, *ptrtauc, *ptrtaul, tauc, taul,
+        dtauc, dtaul, fluxc, fluxl;
 
     printf("TEMP: %-*.3lePE: %-*.3lePG: %-*.3le\n",12,temp,12,pef,12,pgf);
 
     nsteps = (linemax - linemin) / lineinc;
 
-    // find way to customize boltzmann for given line
-    double boltz = 2. * pow(10., -5040 / temp * 0.) / pfn_interp(SODIUM, 0, temp) / (1. + sahaphicurr[SODIUM] / pef);
-    // printf("sahaphiNA: %.4le\n",sahaphicurr[SODIUM]/pef);
-    // printf("boltz: %.4le\n",boltz);
+    /* Calculate the combined Saha-Boltzmann equation for the number density of
+        atoms in the desired excitation and ionization state */
+    sahaboltzelement = 2. * pow(10., -5040 / temp * 0.) / 
+        pfn_interp(SODIUM, 0, temp) / (1. + sahaphicurr[SODIUM] / pef);
 
     ptrtauc = tauccurr;
     ptrtaul = taulcurr;
     ptrflux = flux;
+
+    // Iterate through every wavelength in the desired range around the line
     for (i = 0; i <= nsteps; i++) {
 
-        // printf("tauc: %-*.3letaul: %-*.3le\n",12,tauc,12,taul);
         lambda = linemin + i * lineinc;
-        // printf("LAM-%.1lf\n", lambda);
         
+        // Calculate mass absorption coefficients
         kappa = k_total(temp, pef, pgf, lambda, sahaphicurr[HYDROGEN]);
-        ell = ell_total(temp, pef, pgf, lambda, linecnt, SODIUM, boltz);
+        ell = ell_total(temp, pef, pgf, lambda, linecnt, SODIUM, sahaboltzelement);
 
+        // Calculate the increment in optical depth for this level
         dtauc = kappa * dmcol;
         dtaul = (kappa + ell) * dmcol;
 
+        // Increment optical depth from previous level
         *ptrtauc += dtauc;
         *ptrtaul += dtaul;
 
-        //could put before or after
         tauc = *ptrtauc;
         taul = *ptrtaul;
 
-        
-
-
-        // printf("kappa: %.3le\n",kappa);
-        // printf("ell: %.3le\n",ell);
-
-        // printf("ell %-*.3le\n",15,ell);
-
-        // printf("e2(tauc): %-*.3lee2(taul): %-*.3le\n",12,e2(tauc),12,e2(taul));
-
-        // Eq. 7.15 (Gray 3ed)
+        // Calculate fluxes at this level for a lambda - Eq. 7.15 (Gray 3ed)
         fluxc = 2 * M_PI * planck(temp, lambda * 1e-8) * e2(tauc) * dtauc;
         fluxl = 2 * M_PI * planck(temp, lambda * 1e-8) * e2(taul) * dtaul;
-
-        if (lambda == linecnt || lambda == linemin) {
-            printf("%-*.4le%-*.4le%-*.4le\n",15,lambda,15,kappa,15,ell);
-            printf("planck: %-*.4lee2c: %-*.4lee2l: %-*.4le\n",15,planck(temp, lambda * 1e-8),15,e2(tauc),15,e2(taul));
-            printf("tauc: %-*.4ledtauc: %-*.4lefluxc: %-*.4letaul: %-*.4ledtaul: %-*.4lefluxl: %-*.4le\n",15,tauc,15,dtauc,15,fluxc,15,taul,15,dtaul,15,fluxl);
-            printf("l/c: %.3le\n",fluxl/fluxc);
-        }
-
-        // *ptrflux += (fluxc > 0.) ? fluxl / fluxc : 0.;
         
         *ptrflux += fluxl;
         ptrflux++;
         *ptrflux += fluxc;
 
-        // printf("fluxl: %-*.3le\n",15,fluxl);
-        // printf("fluxc: %-*.3le\n",15,fluxc);
-        // printf("*ptr: %-*.3lefluxl/fluxc: %-*.3le\n",15,*ptr,15,fluxl/fluxc);
-
         ptrtauc++;
         ptrtaul++;
         ptrflux++;
     }
-
-    printf("-----------------\n");
 
     return flux;
 }
@@ -557,7 +535,7 @@ void plotpops() {
 int main(int argc, char **argv) {
 
     int err, nrows, nsteps, i, j;
-    double *databuf, *pops, *flux, *ptr, dmcol;
+    double *databuf, *pops, *flux, *ptr, *ptrl, *ptrc, dmcol;
     FILE *outfilepops, *outfileflux;
 
     // Parse the command-line arguments
@@ -579,8 +557,8 @@ int main(int argc, char **argv) {
     fprintf(outfilepops, "#%-7s%-8s%-8s\n#%-7s%-10s%-8s\n","level","species","density","(#)","","(cm^-3)");
 
     nsteps = (linemax - linemin) / lineinc;
+    
     // Calculate population densities  and flux for all levels in Kurucz atmos
-    // flux = (double *) calloc((linemax - linemin) / lineinc, sizeof(double));
     flux = (double *) malloc(2 * (nsteps + 1) * sizeof(double));
     ptr = flux;
     for(j = 0; j < 2 * (nsteps + 1); j++) {
@@ -588,10 +566,12 @@ int main(int argc, char **argv) {
         ptr++;
     }
 
+    // Initialize optical depth arrays for every wavelength to 0
     tauccurr = (double *) malloc((nsteps + 1) * sizeof(double));
     taulcurr = (double *) malloc((nsteps + 1) * sizeof(double));
-
-    double *ptrl = taulcurr, *ptrc = tauccurr;
+    
+    ptrl = taulcurr;
+    ptrc = tauccurr;
     for(j = 0; j < nsteps + 1; j++) {
         *ptrl = 0.;
         *ptrc = 0.;
@@ -599,6 +579,8 @@ int main(int argc, char **argv) {
         ptrc++;
     }
 
+    /* Iterate through each depth and compute the number density of all relevant
+        atoms and the flux spectrum for the desired line */
     for(i = 0; i < nrows; i++) {
         dmcol = (i == 0) ? *(databuf) : *(databuf + 2 * i) - *(databuf + 2 * (i - 1));
         if (verbose)
@@ -615,7 +597,9 @@ int main(int argc, char **argv) {
 
     outfileflux = fopen(outfilenameflux, "w");
 
+    // Output the total line and continuum fluxes at every level
     for(j = 0; j < 2 * (nsteps + 1); j+=2) {
+        // printf("fluxl: %-*.3lefluxc: %-*.3lel/c %-*.3le\n",12,*(flux + j), 12, *(flux + j + 1), 12, *(flux + j) / *(flux + j + 1));
         fprintf(outfileflux, "%-*.4le%-*.4le\n",15,linemin + j * lineinc,15,*(flux + j) / *(flux + j + 1));
     }
 

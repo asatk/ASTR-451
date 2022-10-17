@@ -10,24 +10,6 @@
 #include "phys.h"
 
 /**
- * 
- * Continuum absorption: kappa
- * srcs:
- *  - H I bf (SEF) (PHPF)
- *  - H I ff (SEF) (PHPF)
- *  - H- bf (SEF) (PHPF)
- *  - H2+ (SEF) (PHPF)
- *  - H- ff (PHPF)
- *  - He- ff
- *  - e-
- *  - metals
- * 
- * SEF = needs stim emission correction: 1/(1 + sahaphi/pe)
- * HPF = needs per H ptcl correction 1-10^(-X(lambda)*theta)
- * 
- */
-
-/**
  * Calculates the excitation energy of the Hydrogen atom for a given principal
  * quantum number n. The result returned is in eV.
 */
@@ -39,9 +21,6 @@ static double chi(int n) {
  * Calculates the Gaunt Factor for Bound-Free Hydrogen absoprtion coefficient.
 */
 static double g_bf(int n, double lambdaR) {
-    // double R = 1.0968e-3;          // for lambda in angstroms
-    // lambdaR is product
-
     // Eq. 8.5 (Gray 3ed)
     return 1 - 0.3456 * pow(lambdaR, -1./3.) * (lambdaR / pow(n, 2) - 0.5);
 }
@@ -50,7 +29,6 @@ static double g_bf(int n, double lambdaR) {
  * Calculates the continuum absorption due to Hydrogen Bound-Free processes.
 */
 static double k_hbf(double temp, double lambda) {
-
     int n, n0;
     double theta, sum;
     
@@ -73,8 +51,10 @@ static double k_hbf(double temp, double lambda) {
 
 }
 
+/**
+ * Calculates the continuum absorption due to Hydrogen Free-Free processes
+*/
 static double k_hff(double temp, double lambda) {
-
     double g_ff, theta;
 
     theta = 5040. / temp;
@@ -138,6 +118,9 @@ static double k_hminusff(double temp, double pef, double lambda) {
 
 }
 
+/**
+ * Calculates contiuum absorption due to e- Free-Free processes
+*/
 static double k_e(double pef, double pgf) {
     int j;
     double asum;
@@ -150,22 +133,17 @@ static double k_e(double pef, double pgf) {
     return 0.6648e-24 * pef / (pgf - pef) * asum;
 }
 
+/**
+ * Calculates the total continuum mass absorption coefficient in cm^2 g^-1 per H
+*/
 double k_total(double temp, double pef, double pgf, double lambda, double sahaphiH) {
     int j;
     double theta, sef, phpf, k_tot, msum;
 
-    // make this the param for abs
     theta = 5040. / temp;
 
     sef = 1 - pow(10., -1.2398e4 * theta / lambda);
     phpf = 1. / (1. + sahaphiH / pef);
-
-    // printf("sef: %.3le\nphpf: %.3le\n",sef, phpf);
-    // printf("k_hbf: %.3le\nk_hff: %.3le\nk_hminusbf: %.3le\nk_hminusff: %.3le\nk_e: %.3le\nk_metals: %.3le\n",
-    //         k_hbf(temp, lambda), k_hff(temp, lambda), k_hminusbf(temp, pef, lambda),
-    //         k_hminusff(temp, pef, lambda),
-    //         k_e(pef, pgf),
-    //         k_metals());
 
     // Eq. 8.18 (Gray 3ed)
     k_tot = ((k_hbf(temp, lambda) + k_hff(temp, lambda) +
@@ -176,20 +154,13 @@ double k_total(double temp, double pef, double pgf, double lambda, double sahaph
     for (j = 0; j < NSPECIES; j++)
         msum += A[j] * mu * amu[j];
 
-    // printf("k_tot: %.3le\nmsum: %.3le\n", k_tot, msum);
-
     // Eq. 8.19 (Gray 3ed)
     return k_tot / msum;
 }
 
 /**
- * Line absorption: ell
- * damping srcs:
- *  - natural broadening (L) gamma
- *  - pressure broadening (L) gamma4, gamma6
- *  - thermal/collisional braodening (G)
+ * Calculates the total line mass absorption coefficient in cm^2 g^-1 per H
 */
-
 double ell_total(double temp, double pef, double pgf, double lambda,
     double linecenter, int species, double sahaboltzelement) {
     
@@ -219,9 +190,6 @@ double ell_total(double temp, double pef, double pgf, double lambda,
     // Eq. 11.47/11.55 (Gray 3ed)
     a = 2.65e-20 * gamma_tot * pow(linecenter, 2.) / dlamdopp;
     u = dlam / dlamdopp;
-
-    // printf("dlam: %-*.3ledlamdopp: %-*.3legamma_tot: %-*.3lea: %-*.3le\n",12,dlam,12,dlamdopp,12,gamma_tot,12,a);
-    // printf("lambda: %-*.3lehjert: %-*.3le\n",12,lambda,12,hjerting(u,a));
 
     // Eq. 11.54 (Gray 3ed)   
     return 4.995e-21 * (hjerting(u, a) * pow(linecenter, 2.) * A[species] *

@@ -26,6 +26,7 @@ extern char *optarg;
 
 /* GLOBAL VARIABLES */
 char *f = "kurucz.txt";
+char *outfilename = "pops.dat";
 double logg = 4.44;
 double teff = 5777.;
 double mtl[NSPECIES] = {0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.};
@@ -35,9 +36,14 @@ char verbose = 0;
 double pfnlines[NSPECIES][10][2][2]; // [species][theta index][state][m=0,b=1]
 double sahaphicurr[NSPECIES];
 double sahaphihminus;
+double linemin = 5885.;
+double linemax = 5895.;
+double linecnt = 5890.;
+double lineinc = 0.1;
 
 /* FUNCTION PROTOTYPES */
 int parse(int argc, char **argv);
+void init_hfn(void);
 void init_pfn(void);
 void init_mtl(void);
 double pfn_interp(int species, int state, double temp);
@@ -46,8 +52,10 @@ double peguess(double pg);
 double pe(double pg, double pei);
 double pg(double mcol);
 double *popdensities(double pg, double pe, double temp);
-// double widths(double pef, double temp);
-double *computemodel(double mcol, double temp);
+double *computemodel(double mcol, double temp, double *flux);
+void printlevel(double *pops, int level, FILE *outfile);
+double *lineflux(double *pops, double *flux, double mcol, double temp, double pef, double pgf);
+void plotpops();
 
 
 /**
@@ -247,7 +255,7 @@ void sahaphi(double temp) {
         sahaphicurr[j] = 0.6665 * pfn_interp(j, 1, temp)/pfn_interp(j, 0, temp) * pow(temp, 5./2.) *
             pow(10., -5040.*I[j]/temp);
     }
-    sahaphihminus = 0.6665 * pfn_interp(0, 0, temp)/1.0 * pow(temp, 5./2.) *
+    sahaphihminus = 0.6665 * pfn_interp(HYDROGEN, 0, temp)/1.0 * pow(temp, 5./2.) *
             pow(10., -5040.*Ihminus/temp);
 }
 
@@ -257,7 +265,7 @@ void sahaphi(double temp) {
  * value for subsequent iterations of the value of Pe. Returns the guess.
  */
 double peguess(double pg) {
-    return -1. * sahaphicurr[0] + sqrt(pow(sahaphicurr[0],2.) + sahaphicurr[0] * pg);
+    return -1. * sahaphicurr[HYDROGEN] + sqrt(pow(sahaphicurr[HYDROGEN],2.) + sahaphicurr[HYDROGEN] * pg);
 }
 
 /**
@@ -315,7 +323,7 @@ double *popdensities(double pgf, double pef, double temp) {
         asum += A[j];
 
     nh = (pgf - pef) / (k * temp) / asum;
-    nh1 = nh / (pef/sahaphihminus + 1. + sahaphicurr[0]/pef);
+    nh1 = nh / (pef/sahaphihminus + 1. + sahaphicurr[HYDROGEN]/pef);
 
     // H- number density
     ptr++;
@@ -327,7 +335,7 @@ double *popdensities(double pgf, double pef, double temp) {
 
     // H II number density
     ptr++;
-    *ptr = nh1 * sahaphicurr[0] / pef;
+    *ptr = nh1 * sahaphicurr[HYDROGEN] / pef;
 
     // population of all elements considered, excluding H-/HI/HII
     for (j = 1; j < NSPECIES; j++) {
@@ -344,24 +352,6 @@ double *popdensities(double pgf, double pef, double temp) {
     return pops;
 }
 
-// p 186 Gray
-// double computeflux() {
-//     2 * PI * intg_-inf^inf S_v(Tau0) Exp(Tau_v)
-// }
-
-// double widths(double pef, double temp) {
-//     double alpha, gamma4, gamma6, gammatot;
-//     gamma4 = pow(10., 19 + 2./3. * log10(c4) + log10(pef) - 5./6. * log10(temp));
-//     gamma6 = pow(10., 20 + 0.4 * log10(c6) + log10(pef) - 0.7 * log10(temp));
-
-//     gammatot = gammanat + gamma4 + gamma6;
-
-//     // alpha = pow(qe, 2.) / (me * pow(c, 2.))
-
-//     return gammatot;
-
-// }
-
 /**
  * Solves the atmosphere for a given level, determined by its mass column and
  * temperature. The gas pressure, electron pressure, and population densities
@@ -371,7 +361,7 @@ double *popdensities(double pgf, double pef, double temp) {
  * memory location with 2 * NSPECIES + 2 double elements. Each element contains
  * a corresponding number density: e-, H-, H I, H II, C I, C II, ...Ni I, Ni II
  */
-double *computemodel(double mcol, double temp) {
+double *computemodel(double mcol, double temp, double *flux) {
     double pgf, pei, pef, precision = 1.e-10, *pops;
     int itercount = 0;
 
@@ -403,9 +393,7 @@ double *computemodel(double mcol, double temp) {
     // determine population densities for each species desired
     pops = popdensities(pgf, pef, temp);
 
-    // (void) widths(pef, temp);
-
-    // k_total(pef, pgf, temp, 5885., sahaphicurr[HYDROGEN]);
+    flux = lineflux(pops, flux, mcol, temp, pef, pgf);
 
     if (verbose)
         printf("continuum absorption coefficient for 5885A: %.3le\n", k_total(pef, pgf, temp, 5885., sahaphicurr[HYDROGEN]));
@@ -413,10 +401,69 @@ double *computemodel(double mcol, double temp) {
     return pops;
 }
 
+void printlevel(double *pops, int level, FILE *outfile) {
+    int j;
+    char *temp_name;
+
+    if (verbose)
+        printf("---- SPECIES POPULATIONS ----\n%-*s#/cm^3\n",10,"species");
+    
+    // H- to e-
+    if (verbose)
+        printf("%-*s%.3le\n",10,speciesnames[0], *(pops + 1) / *(pops + 0));
+    temp_name = (char *) malloc(strlen(speciesnames[0]) + 2);
+    temp_name = strcpy(temp_name, speciesnames[0]);
+    temp_name = strcat(temp_name,"\'");
+    fprintf(outfile, "%-*i\'%-*s%-*le\n",8,level,10,temp_name,12, *(pops + 1) / *(pops + 0));
+
+    // print each species and its density to outfile and stdin if verbose
+    for(j = 0; j < 2 * NSPECIES + 2; j++) {
+        if (verbose)
+            printf("%-*s%.3le\n",10,speciesnames[j + 1], *(pops + j));
+        temp_name = (char *) malloc(strlen(speciesnames[j + 1]) + 2);
+        temp_name = strcpy(temp_name, speciesnames[j + 1]);
+        temp_name = strcat(temp_name,"\'");
+        fprintf(outfile, "%-*i\'%-*s%-*le\n",8,level,10,temp_name,12,*(pops + j));
+    }
+}
+
+double *lineflux(double *pops, double *flux, double mcol, double temp, double pef, double pgf) {
+    int i, nsteps;
+    double ell, kappa, lambda, *ptr, tau, dtau;
+
+    (void)pops;
+
+    printf("TEMP: %.3le\n",temp);
+
+    nsteps = (linemax - linemin) / lineinc;
+    kappa = k_total(temp, pef, pgf, linemin, sahaphicurr[HYDROGEN]);
+    tau = (pow(temp / teff, 4.) * 4. - 2.) / 3.;
+
+    printf(" - kappa: %.3le\n",kappa);
+
+    // find way to customize boltzmann for given line
+    double boltz = 2 * pow(10., 5040 / temp * ) / pfn_interp(SODIUM, , temp);
+
+    ptr = flux;
+    for (i = 0; i < nsteps; i++) {
+        lambda = linemin + i * lineinc;
+        // printf("computing flux at %.1lf\n", lambda);
+        
+        // kappa = k_total(temp, pef, pgf, lambda, sahaphicurr[HYDROGEN]);
+        ell = ell_total(temp, pef, pgf, lambda, linecnt);
+        dtau = (kappa + ell) * mcol;
+
+        *ptr += 2 * M_PI * planck(temp, lambda) * e2(tau) * dtau;
+        ptr++;
+    }
+
+    return flux;
+}
+
 /**
  * Plot the number densities from the output file pops.dat using gnuplot.
  */
-void plot(char *speciesnames[]) {
+void plotpops() {
     int j;
     char str[300], fmt_str[300], title[10], titlej[10];
 
@@ -463,9 +510,8 @@ void plot(char *speciesnames[]) {
  */
 int main(int argc, char **argv) {
 
-    int err, nrows, i, j;
-    double *databuf, *pops;
-    char *outfilename = "pops.dat", *temp_name;
+    int err, nrows, i;
+    double *databuf, *pops, *flux;
     FILE *outfile;
 
     // Parse the command-line arguments
@@ -482,50 +528,27 @@ int main(int argc, char **argv) {
     init_pfn();
     init_mtl();
 
-    char *speciesnames[] = {
-        "H-e- ", "e- ", "H- ", "H I", "H II",
-        "He I", "He II", "C I", "C II",
-        "Na I", "Na II", "Mg I", "Mg II",
-        "Si I", "Si II", "K I", "K II",
-        "Ca I", "Ca II", "Cr I", "Cr II",
-        "Fe I", "Fe II", "Ni I", "Ni II"    
-    };
-
+    // Open output file to write
     outfile = fopen(outfilename,"w");
     fprintf(outfile, "#%-7s%-8s%-8s\n#%-7s%-10s%-8s\n","level","species","density","(#)","","(cm^-3)");
 
-    // Calculate population densities for all levels in the Kurucz atmosphere
+    // Calculate population densities  and flux for all levels in Kurucz atmos
+    flux = (double *) calloc((linemax - linemin) / lineinc, sizeof(double));
     for(i = 0; i < nrows; i++) {
         if (verbose)
             printf("\nLevel %i - %.5le - %.2le\n",i,*(databuf + 2 * i), *(databuf + 2 * i + 1));
-        pops = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1));
-        if (verbose)
-            printf("---- SPECIES POPULATIONS ----\n%-*s#/cm^3\n",10,"species");
+        pops = computemodel(*(databuf + 2 * i), *(databuf + 2 * i + 1), flux);
         
-        // H- to e-
-        if (verbose)
-            printf("%-*s%.3le\n",10,speciesnames[0], *(pops + 1) / *(pops + 0));
-        temp_name = (char *) malloc(strlen(speciesnames[0]) + 2);
-        temp_name = strcpy(temp_name, speciesnames[0]);
-        temp_name = strcat(temp_name,"\'");
-        fprintf(outfile, "%-*i\'%-*s%-*le\n",8,i,10,temp_name,12, *(pops + 1) / *(pops + 0));
-
-        // print each species and its density to outfile and stdin if verbose
-        for(j = 0; j < 2 * NSPECIES + 2; j++) {
-            if (verbose)
-                printf("%-*s%.3le\n",10,speciesnames[j + 1], *(pops + j));
-            temp_name = (char *) malloc(strlen(speciesnames[j + 1]) + 2);
-            temp_name = strcpy(temp_name, speciesnames[j + 1]);
-            temp_name = strcat(temp_name,"\'");
-            fprintf(outfile, "%-*i\'%-*s%-*le\n",8,i,10,temp_name,12,*(pops + j));
-        }
+        printlevel(pops, i, outfile);
     }
 
     fclose(outfile);
 
     if (plotmode != 0)
-        plot(speciesnames);
+        plotpops();
 }
 
 // Prevent "unused function" and "unused variable" warnings.
-static const void *dummy_ref[] = {amu, &fosc, &tsol, &qe, &me, &mu, &G, &c, &loge, &a0, &R, &gammanat, &c4, &c6, dummy_ref};
+static const void *dummy_ref[] = {amu, contjumps, &fosc, &tsol, &qe, &qeesu,
+    &me, &mu, &G, &h, &c, &loge, &a0, &R, &gammanat, &c4, &c6,
+    dummy_ref};

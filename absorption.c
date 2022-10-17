@@ -27,10 +27,17 @@
  * 
  */
 
+/**
+ * Calculates the excitation energy of the Hydrogen atom for a given principal
+ * quantum number n. The result returned is in eV.
+*/
 static double chi(int n) {
     return I[HYDROGEN] * (1. - 1. / pow(n, 2.));
 }
 
+/**
+ * Calculates the Gaunt Factor for Bound-Free Hydrogen absoprtion coefficient.
+*/
 static double g_bf(int n, double lambdaR) {
     // double R = 1.0968e-3;          // for lambda in angstroms
     // lambdaR is product
@@ -38,12 +45,20 @@ static double g_bf(int n, double lambdaR) {
     return 1 - 0.3456 * pow(lambdaR, -1./3.) * (lambdaR / pow(n, 2) - 0.5);
 }
 
+/**
+ * Calculates the continuum absorption due to Hydrogen Bound-Free processes.
+*/
 static double k_hbf(double temp, double lambda) {
 
     int n, n0;
     double theta, sum;
 
-    n0 = 1;     //what determines n0? is this calculated for all n0?
+    
+    for (n0 = 0; n0 < (int) (sizeof(contjumps) / sizeof(double)); n0++) {
+        if (lambda < contjumps[n0])
+            break;
+    }
+    n0++;
 
     theta = 5040. / temp;
 
@@ -74,11 +89,10 @@ static double k_hff(double temp, double lambda) {
     return a0 * pow(lambda, 3.) * g_ff * loge / (2 * theta * I[HYDROGEN]) * pow(10., -theta * I[HYDROGEN]);
 }
 
-
 /**
  * H- Bound-Free absorption in cm^2 per neutral H atom.
  */
-static double k_hminusbf(double pef, double temp, double lambda) {
+static double k_hminusbf(double temp, double pef, double lambda) {
     double a_bf, theta;
 
     theta = 5040. / temp;
@@ -97,7 +111,7 @@ static double k_hminusbf(double pef, double temp, double lambda) {
 /**
  * H- Free-Free absorption in cm^2 per neutral H atom.
  */
-static double k_hminusff(double pef, double temp, double lambda) {
+static double k_hminusff(double temp, double pef, double lambda) {
     double f0, f1, f2, loglambda, logtheta;
 
     loglambda = log10(lambda);
@@ -144,7 +158,7 @@ static double k_metals() {
     return 0.;
 }
 
-double k_total(double pef, double pgf, double temp, double lambda, double sahaphiH) {
+double k_total(double temp, double pef, double pgf, double lambda, double sahaphiH) {
     int j;
     double theta, sef, phpf, k_tot, msum;
 
@@ -154,20 +168,22 @@ double k_total(double pef, double pgf, double temp, double lambda, double sahaph
     sef = 1 - pow(10., -1.2398e4 * theta / lambda);
     phpf = 1. / (1. + sahaphiH / pef);
 
-    printf("sef: %.3le\nphpf: %.3le\n",sef, phpf);
-    printf("k_hbf: %.3le\nk_hff: %.3le\nk_hminusbf: %.3le\nk_hminusff: %.3le\nk_e: %.3le\nk_metals: %.3le\n",
-            k_hbf(temp, lambda), k_hff(temp, lambda), k_hminusbf(pef, temp, lambda),
-            k_hminusff(pef, temp, lambda),
-            k_e(pef, pgf),
-            k_metals());
+    // printf("sef: %.3le\nphpf: %.3le\n",sef, phpf);
+    // printf("k_hbf: %.3le\nk_hff: %.3le\nk_hminusbf: %.3le\nk_hminusff: %.3le\nk_e: %.3le\nk_metals: %.3le\n",
+    //         k_hbf(temp, lambda), k_hff(temp, lambda), k_hminusbf(temp, pef, lambda),
+    //         k_hminusff(temp, pef, lambda),
+    //         k_e(pef, pgf),
+    //         k_metals());
 
-    k_tot = ((k_hbf(temp, lambda) + k_hff(temp, lambda) + k_hminusbf(pef, temp, lambda)) * sef + k_hminusff(pef, temp, lambda)) * phpf + k_e(pef, pgf) + k_metals();
+    k_tot = ((k_hbf(temp, lambda) + k_hff(temp, lambda) +
+        k_hminusbf(temp, pef, lambda)) * sef + k_hminusff(temp, pef, lambda)) *
+        phpf + k_e(pef, pgf) + k_metals();
 
     msum = 0.0;
     for (j = 0; j < NSPECIES; j++)
         msum += A[j] * mu * amu[j];
 
-    printf("k_tot: %.3le\nmsum: %.3le\n", k_tot, msum);
+    // printf("k_tot: %.3le\nmsum: %.3le\n", k_tot, msum);
 
     return k_tot / msum;
 }
@@ -180,6 +196,42 @@ double k_total(double pef, double pgf, double temp, double lambda, double sahaph
  *  - thermal/collisional braodening (G)
 */
 
+double ell_total(double temp, double pef, double pgf, double lambda,
+    double linecenter, int species, double sahaboltzelement) {
+    
+    int j;
+    double a, dlam, dlamdopp, gamma4, gamma6, gamma_tot, msum, sef, u;
+
+    // Sum of masses of each element in the star relative to their abundances
+    msum = 0.0;
+    for (j = 0; j < NSPECIES; j++)
+        msum += A[j] * mu * amu[j];
+
+    // Stimulated-emission factor
+    sef = (1 - pow(10., -1.2398e4 * 5040. / temp / lambda));
+
+    // Collision broadening - quadratic Stark
+    gamma4 = pow(10., 19 + 2./3. * log10(c4) + log10(pef) - 5./6. * log10(temp));
+    // Collision broadening - van der Waals
+    gamma6 = pow(10., 20 + 0.4 * log10(c6) + log10(pgf) - 0.7 * log10(temp));
+    // Total Lorentz width/damping
+    gamma_tot = gamma4 + gamma6 + gammanat;
+
+    // Distance from line center
+    dlam = lambda - linecenter;
+    // Doppler width (Gaussian)
+    dlamdopp = 4.301e-7 * (linecenter) * pow(temp / amu[species], 1. / 2.);
+
+    // Hjerting function parameters
+    a = 2.65e-20 * gamma_tot * pow(linecenter, 2.) / dlamdopp;
+    u = dlam / dlamdopp;
+
+    // Eq. 11.54    
+    return 4.995e-21 * (hjerting(u, a) * pow(linecenter, 2.) * A[species] *
+        fosc * sahaboltzelement) / (dlamdopp * msum) * sef;
+}
+
 
 // Prevent "unused function" and "unused variable" warnings.
-static const void *dummy_ref[] = {amu, &fosc, &tsol, &qe, &me, &mu, &G, &c, &k, &gammanat, &c4, &c6, u0, u1, thetas, dummy_ref};
+static const void *dummy_ref[] = {amu, &fosc, &tsol, &qe, &me, &mu, &G, &h, &c,
+    &k, &gammanat, &c4, &c6, u0, u1, thetas, speciesnames, dummy_ref};
